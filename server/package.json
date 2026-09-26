@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.6",
+    "expo": "^57.0.25",
     "express": "^5.2.1",
     "node-fetch": "^2.7.0"
   }
