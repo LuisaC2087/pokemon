@@ -1,8 +1,9 @@
-import React, { createContext, useState } from "react";
+import { createContext, useState } from "react";
+import type { ReactNode } from "react";
 
 export const AppContext = createContext<any>(null);
 
-export const AppProvider = ({ children }: { children: React.ReactNode }) => {
+export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [selectedPokemon, setSelectedPokemon] = useState<any>(null);
   const [selectedJujutsu, setSelectedJujutsu] = useState<any>(null);
 
