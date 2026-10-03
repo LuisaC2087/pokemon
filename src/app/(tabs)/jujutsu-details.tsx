@@ -20,7 +20,22 @@ export default function JujutsuDetails() {
         <View style={styles.card}>
           <Image source={{ uri: selectedJujutsu.image_url }} style={styles.image} />
           <Text style={styles.name}>{selectedJujutsu.name}</Text>
-          <Text style={styles.anime}>Anime: {selectedJujutsu.anime}</Text>
+          <View style={styles.divider} />
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Técnica Maldita:</Text>
+            <Text style={styles.value}>{selectedJujutsu.technique || "Desconocida"}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Expansión de Dominio:</Text>
+            <Text style={styles.value}>{selectedJujutsu.domain_expansion || "Desconocida"}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Grado:</Text>
+            <Text style={styles.value}>{selectedJujutsu.grade || "Desconocido"}</Text>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -64,8 +79,8 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   image: {
-    width: 200,
-    height: 200,
+    width: 250,
+    height: 250,
     marginBottom: 20,
     resizeMode: "contain",
   },
@@ -73,10 +88,28 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 26,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  anime: {
+  divider: {
+    height: 1,
+    backgroundColor: "#444",
+    width: "100%",
+    marginBottom: 15,
+  },
+  infoRow: {
+    flexDirection: "column",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  label: {
     color: "#aaa",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+  value: {
+    color: "#fff",
     fontSize: 18,
+    textAlign: "center",
   },
 });
