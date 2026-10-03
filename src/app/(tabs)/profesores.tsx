@@ -66,6 +66,10 @@ export default function Profesores() {
       <ScrollView>
         {profesores.map((prof: any) => (
           <View key={prof._id || prof.nombre} style={styles.card}>
+            <Image 
+              source={{ uri: prof.image_url || prof.imagen_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.nombre)}&background=random&color=fff&size=150` }} 
+              style={styles.image} 
+            />
             <View style={styles.cardInfo}>
               <Text style={styles.name}>{prof.nombre}</Text>
               <Text style={styles.summary} numberOfLines={2}>{prof.profesion}</Text>
@@ -146,6 +150,11 @@ const styles = StyleSheet.create({
   cardInfo: {
     flex: 1,
     marginLeft: 15,
+  },
+  image: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   name: {
     color: "#fff",

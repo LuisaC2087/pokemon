@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { AppContext } from "../../context/AppContext";
 
@@ -43,6 +43,10 @@ export default function ProfesoresDetails() {
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        <Image 
+          source={{ uri: p.image_url || p.imagen_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nombre)}&background=random&color=fff&size=200` }} 
+          style={styles.image} 
+        />
         <Text style={styles.name}>{p.nombre}</Text>
         <Text style={styles.profesion}>{p.profesion}</Text>
         <Text style={styles.ubicacion}>📍 {p.ubicacion}</Text>
@@ -127,6 +131,9 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center", padding: 30, paddingTop: 60,
     backgroundColor: "#2a2a2a", borderBottomLeftRadius: 30, borderBottomRightRadius: 30,
+  },
+  image: {
+    width: 120, height: 120, borderRadius: 60, marginBottom: 15,
   },
   name: { fontSize: 24, fontWeight: "bold", color: "#fff", textAlign: "center" },
   profesion: { fontSize: 13, color: "#aaa", marginTop: 8, textAlign: "center", lineHeight: 20 },
