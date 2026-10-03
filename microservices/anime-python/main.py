@@ -11,8 +11,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
+import certifi
+
 MONGO_URL = os.getenv("MONGO_URL")
-client = AsyncIOMotorClient(MONGO_URL)
+client = AsyncIOMotorClient(MONGO_URL, tlsCAFile=certifi.where())
 db = client.anime_db
 collection = db.characters
 
