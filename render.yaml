@@ -27,7 +27,7 @@ services:
     plan: free
     rootDir: microservices/profesores-node
     buildCommand: npm install
-    startCommand: node index.js
+    startCommand: npm start
     envVars:
       - key: MONGO_URL
         sync: false

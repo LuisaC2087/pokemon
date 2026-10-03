@@ -10,24 +10,17 @@ export default function Profesores() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [serviceStatus, setServiceStatus] = useState<string | null>(null);
   const router = useRouter();
   const { setSelectedProfesor } = useContext(AppContext);
 
-  useEffect(() => {
-    fetch(`${BASE_URL}/health`)
-      .then((res) => res.json())
-      .then((data) => setServiceStatus(data.status))
-      .catch(() => setServiceStatus("error"));
-  }, []);
-
   const executeSearch = useCallback(() => {
+    if (search.trim().length === 0) {
+      setProfesores([]);
+      return;
+    }
+    
     setLoading(true);
-    const url = search.trim().length === 0 
-      ? `${BASE_URL}/profesores` 
-      : `${BASE_URL}/profesores/search/${encodeURIComponent(search)}`;
-      
-    fetch(url)
+    fetch(`${BASE_URL}/search/${encodeURIComponent(search.trim())}`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setProfesores(data);
@@ -37,9 +30,9 @@ export default function Profesores() {
       .finally(() => setLoading(false));
   }, [search]);
 
-  // Initial load
+  // Remover carga inicial
   useEffect(() => {
-    executeSearch();
+    // Ya no cargamos la lista completa porque el backend ahora solo tiene la API de búsqueda
   }, []);
 
   const handlePress = (prof: any) => {
@@ -51,7 +44,6 @@ export default function Profesores() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Profesores</Text>
-        <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
       </View>
 
       <View style={styles.searchContainer}>
@@ -78,7 +70,7 @@ export default function Profesores() {
             <View style={styles.cardInfo}>
               <Text style={styles.name}>{prof.name}</Text>
               <Text style={styles.summary} numberOfLines={2}>
-                {prof.subject || 'Materia desconocida'} - {prof.department || 'Sin departamento'}
+                {prof.title || 'Título no especificado'}
               </Text>
               <TouchableOpacity style={styles.moreButton} onPress={() => handlePress(prof)}>
                 <Text style={styles.moreButtonText}>Mostrar más</Text>
