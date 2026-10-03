@@ -75,7 +75,7 @@ const swaggerSpec = swaggerJsDoc({
     info: { title: 'Profesores API', version: '1.0.0', description: 'Microservicio simple para consultar profesores' },
     servers: [{ url: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000' }],
   },
-  apis: ['index.js'],
+  apis: [__filename],
 });
 
 // Ruta a los archivos estáticos de swagger-ui-dist

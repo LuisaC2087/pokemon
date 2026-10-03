@@ -41,18 +41,7 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="pokemon-details"
-        options={{
-          title: "Datos",
-          tabBarActiveTintColor: "#3B4CCA",
-
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="document-text"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
+        options={{ href: null }}
       />
 
       <Tabs.Screen
@@ -73,18 +62,7 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="jujutsu-details"
-        options={{
-          title: "Detalles",
-          tabBarActiveTintColor: "#D32F2F",
-
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="flash"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
+        options={{ href: null }}
       />
 
       <Tabs.Screen
@@ -105,18 +83,7 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="profesores-details"
-        options={{
-          title: "Detalles",
-          tabBarActiveTintColor: "#2E7D32",
-
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="person"
-              size={size}
-              color={color}
-            />
-          ),
-        }}
+        options={{ href: null }}
       />
 
     </Tabs>
