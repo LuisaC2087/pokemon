@@ -1,14 +1,20 @@
-import { useState, useEffect } from "react";
-import { View, Text, Image, StyleSheet, ScrollView } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function Pokemon() {
   const [pokemons, setPokemons] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("http://localhost:3000/pokemons")
+    fetch("https://pokemon-node-ueas.onrender.com/pokemons")
       .then((res) => res.json())
-      .then((data) => setPokemons(data))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setPokemons(data);
+        } else {
+          setError("Error en respuesta");
+        }
+      })
       .catch(() => setError("Error cargando pokemons"));
   }, []);
 
@@ -17,7 +23,7 @@ export default function Pokemon() {
       <Text style={styles.header}>Pokemons</Text>
       {error !== "" && <Text style={styles.error}>{error}</Text>}
       <ScrollView>
-        {pokemons.map((poke: any) => (
+        {Array.isArray(pokemons) && pokemons.map((poke: any) => (
           <View key={poke.id} style={styles.card}>
             <Image source={{ uri: poke.image_url }} style={styles.image} />
             <Text style={styles.name}>{poke.name}</Text>

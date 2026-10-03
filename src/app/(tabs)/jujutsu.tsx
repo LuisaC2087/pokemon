@@ -1,14 +1,20 @@
-import { useState, useEffect } from "react";
-import { View, Text, Image, StyleSheet, ScrollView } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function Anime() {
   const [characters, setCharacters] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("http://localhost:8000/characters")
+    fetch("https://anime-python-ueas.onrender.com/characters")
       .then((res) => res.json())
-      .then((data) => setCharacters(data))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCharacters(data);
+        } else {
+          setError("Error en respuesta");
+        }
+      })
       .catch(() => setError("Error cargando personajes"));
   }, []);
 
@@ -17,7 +23,7 @@ export default function Anime() {
       <Text style={styles.header}>Anime</Text>
       {error !== "" && <Text style={styles.error}>{error}</Text>}
       <ScrollView>
-        {characters.map((char: any, idx: number) => (
+        {Array.isArray(characters) && characters.map((char: any, idx: number) => (
           <View key={idx} style={styles.card}>
             <Image source={{ uri: char.image_url }} style={styles.image} />
             <Text style={styles.name}>{char.name}</Text>
