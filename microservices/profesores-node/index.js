@@ -1,6 +1,4 @@
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const { MongoClient } = require('mongodb');
 const swaggerJsDoc = require('swagger-jsdoc');
 
@@ -31,42 +29,6 @@ async function getDb() {
  *     responses:
  *       200:
  *         description: Profesor encontrado
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   nombre: { type: string }
- *                   ubicacion: { type: string }
- *                   profesion: { type: string }
- *                   formacion:
- *                     type: object
- *                     properties:
- *                       pregrado: { type: string }
- *                       maestria: { type: string }
- *                       universidad_pregrado: { type: string }
- *                       universidad_maestria: { type: string }
- *                   cargos: { type: array, items: { type: string } }
- *                   experiencia:
- *                     type: object
- *                     properties:
- *                       sena: { type: string }
- *                       docencia_universitaria: { type: string }
- *                   lenguajes_programacion: { type: array, items: { type: string } }
- *                   bases_de_datos:
- *                     type: object
- *                     properties:
- *                       sql: { type: array, items: { type: string } }
- *                       nosql: { type: array, items: { type: string } }
- *                   frontend: { type: array, items: { type: string } }
- *                   backend: { type: array, items: { type: string } }
- *                   sistemas_operativos: { type: array, items: { type: string } }
- *                   otras_areas: { type: array, items: { type: string } }
- *                   aptitudes_principales: { type: array, items: { type: string } }
- *                   contactos: { type: number }
- *                   linkedin: { type: string }
  */
 
 const swaggerSpec = swaggerJsDoc({
@@ -78,42 +40,40 @@ const swaggerSpec = swaggerJsDoc({
   apis: [__filename],
 });
 
-// Ruta a los archivos estáticos de swagger-ui-dist
-const swaggerUiPath = path.dirname(require.resolve('swagger-ui-dist/package.json'));
+// HTML de Swagger UI usando CDN (sin paquete swagger-ui-dist)
+const swaggerHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Profesores API Docs</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+  <script>
+    SwaggerUIBundle({ url: '/swagger.json', dom_id: '#swagger-ui', presets: [SwaggerUIBundle.presets.apis] });
+  </script>
+</body>
+</html>`;
 
 const server = http.createServer(async (req, res) => {
-  // CORS manual
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.writeHead(200).end();
 
-  // Swagger JSON
+  // Swagger UI (CDN)
+  if (req.url === '/api-docs' || req.url === '/api-docs/') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    return res.end(swaggerHtml);
+  }
+
+  // Swagger JSON spec
   if (req.url === '/swagger.json') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(swaggerSpec));
-  }
-
-  // Swagger UI
-  if (req.url === '/api-docs' || req.url === '/api-docs/') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    return res.end(`<!DOCTYPE html><html><head><title>API Docs</title>
-      <link rel="stylesheet" href="/api-docs/swagger-ui.css">
-      </head><body><div id="swagger-ui"></div>
-      <script src="/api-docs/swagger-ui-bundle.js"></script>
-      <script>SwaggerUIBundle({ url: '/swagger.json', dom_id: '#swagger-ui' });</script>
-      </body></html>`);
-  }
-
-  if (req.url.startsWith('/api-docs/')) {
-    const fileName = req.url.replace('/api-docs/', '');
-    const filePath = path.join(swaggerUiPath, fileName);
-    if (fs.existsSync(filePath)) {
-      const ext = path.extname(filePath);
-      const types = { '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.map': 'application/json' };
-      res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
-      return fs.createReadStream(filePath).pipe(res);
-    }
   }
 
   // ÚNICA API: Buscar profesor por nombre
