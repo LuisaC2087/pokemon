@@ -101,10 +101,7 @@ class HealthResponse(BaseModel):
         }
 
 
-@app.on_event("startup")
-async def startup_db_client():
-    await collection.drop()
-    await collection.insert_many(characters_data)
+
 
 
 @app.get(

@@ -1,6 +1,6 @@
-import { useEffect, useState, useContext, useCallback } from "react";
-import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppContext } from "../../context/AppContext";
 
 const BASE_URL = "https://anime-python-ueas.onrender.com";
@@ -123,7 +123,7 @@ export default function Anime() {
         onPress={handleDomainFilter}
       >
         <Text style={[styles.domainText, domainOnly && styles.domainTextActive]}>
-          ⚡ Con Expansión de Dominio
+          Con Expansión de Dominio
         </Text>
       </TouchableOpacity>
 
