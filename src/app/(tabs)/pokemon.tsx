@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 
 export default function Pokemon() {
   const [pokemons, setPokemons] = useState([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -18,12 +19,26 @@ export default function Pokemon() {
       .catch(() => setError("Error cargando pokemons"));
   }, []);
 
+  const filtered = Array.isArray(pokemons)
+    ? pokemons.filter((p: any) => p.name.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Pokemons</Text>
+      
+      <TextInput
+        style={styles.input}
+        placeholder="Buscar Pokémon..."
+        placeholderTextColor="#888"
+        value={search}
+        onChangeText={setSearch}
+      />
+
       {error !== "" && <Text style={styles.error}>{error}</Text>}
+      
       <ScrollView>
-        {Array.isArray(pokemons) && pokemons.map((poke: any) => (
+        {filtered.map((poke: any) => (
           <View key={poke.id} style={styles.card}>
             <Image source={{ uri: poke.image_url }} style={styles.image} />
             <Text style={styles.name}>{poke.name}</Text>
@@ -48,6 +63,13 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 20,
+  },
+  input: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    fontSize: 16,
   },
   error: {
     color: "red",

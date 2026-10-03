@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 
 export default function Anime() {
   const [characters, setCharacters] = useState([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -18,12 +19,26 @@ export default function Anime() {
       .catch(() => setError("Error cargando personajes"));
   }, []);
 
+  const filtered = Array.isArray(characters)
+    ? characters.filter((c: any) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Anime</Text>
+      
+      <TextInput
+        style={styles.input}
+        placeholder="Buscar personaje..."
+        placeholderTextColor="#888"
+        value={search}
+        onChangeText={setSearch}
+      />
+
       {error !== "" && <Text style={styles.error}>{error}</Text>}
+      
       <ScrollView>
-        {Array.isArray(characters) && characters.map((char: any, idx: number) => (
+        {filtered.map((char: any, idx: number) => (
           <View key={idx} style={styles.card}>
             <Image source={{ uri: char.image_url }} style={styles.image} />
             <Text style={styles.name}>{char.name}</Text>
@@ -48,6 +63,13 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 20,
+  },
+  input: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    fontSize: 16,
   },
   error: {
     color: "red",
