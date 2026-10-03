@@ -30,7 +30,7 @@ services:
     startCommand: npm start
     envVars:
       - key: MONGO_URL
-        sync: false
+        value: mongodb+srv://lfc20082019_db_user:tT3jvlL3V9JgTnjS@cluster0.qnsymcp.mongodb.net/?appName=Cluster0
 
   - type: web
     name: pokemon-frontend
