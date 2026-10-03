@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
+import { useEffect, useState, useContext } from "react";
+import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
+import { AppContext } from "../../context/AppContext";
 
 export default function Anime() {
   const [characters, setCharacters] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const router = useRouter();
+  const { setSelectedJujutsu } = useContext(AppContext);
 
   useEffect(() => {
     fetch("https://anime-python-ueas.onrender.com/characters")
@@ -23,6 +27,11 @@ export default function Anime() {
     ? characters.filter((c: any) => c.name.toLowerCase().includes(search.toLowerCase()))
     : [];
 
+  const handlePress = (char: any) => {
+    setSelectedJujutsu(char);
+    router.push("/(tabs)/jujutsu-details");
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Jujutsu Kaisen</Text>
@@ -39,11 +48,11 @@ export default function Anime() {
       
       <ScrollView>
         {filtered.map((char: any, idx: number) => (
-          <View key={idx} style={styles.card}>
+          <TouchableOpacity key={idx} style={styles.card} onPress={() => handlePress(char)}>
             <Image source={{ uri: char.image_url }} style={styles.image} />
             <Text style={styles.name}>{char.name}</Text>
             <Text style={styles.anime}>{char.anime}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>

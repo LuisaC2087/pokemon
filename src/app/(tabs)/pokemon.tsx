@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
+import { useEffect, useState, useContext } from "react";
+import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
+import { AppContext } from "../../context/AppContext";
 
 export default function Pokemon() {
   const [pokemons, setPokemons] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const router = useRouter();
+  const { setSelectedPokemon } = useContext(AppContext);
 
   useEffect(() => {
     fetch("https://pokemon-node-ueas.onrender.com/pokemons")
@@ -23,6 +27,11 @@ export default function Pokemon() {
     ? pokemons.filter((p: any) => p.name.toLowerCase().includes(search.toLowerCase()))
     : [];
 
+  const handlePress = (poke: any) => {
+    setSelectedPokemon(poke);
+    router.push("/(tabs)/pokemon-details");
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Pokemons</Text>
@@ -39,11 +48,11 @@ export default function Pokemon() {
       
       <ScrollView>
         {filtered.map((poke: any) => (
-          <View key={poke.id} style={styles.card}>
+          <TouchableOpacity key={poke.id} style={styles.card} onPress={() => handlePress(poke)}>
             <Image source={{ uri: poke.image_url }} style={styles.image} />
             <Text style={styles.name}>{poke.name}</Text>
             <Text style={styles.type}>{poke.type}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>

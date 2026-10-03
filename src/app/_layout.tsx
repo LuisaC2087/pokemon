@@ -1,13 +1,10 @@
 import { Stack } from "expo-router";
-import { PokemonProvider } from "../context/PokemonContext";
-import { JujutsuProvider } from "../context/JujutsuContext";
+import { AppProvider } from "../context/AppContext";
 
 export default function RootLayout() {
   return (
-    <PokemonProvider>
-      <JujutsuProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </JujutsuProvider>
-    </PokemonProvider>
+    <AppProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AppProvider>
   );
 }
