@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 30,
   },
   image: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     marginBottom: 15,
   },
   name: {

@@ -21,37 +21,25 @@ export default function Profesores() {
       .catch(() => setServiceStatus("error"));
   }, []);
 
-  useEffect(() => {
+  const executeSearch = useCallback(() => {
     setLoading(true);
-    fetch(`${BASE_URL}/profesores`)
+    const url = search.trim().length === 0 
+      ? `${BASE_URL}/profesores` 
+      : `${BASE_URL}/profesores/search/${encodeURIComponent(search)}`;
+      
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setProfesores(data);
         else setError("Error en respuesta");
       })
-      .catch(() => setError("Error cargando profesores"))
+      .catch(() => setError("Error buscando"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [search]);
 
-  const handleSearch = useCallback((text: string) => {
-    setSearch(text);
-    if (text.length === 0) {
-      setLoading(true);
-      fetch(`${BASE_URL}/profesores`)
-        .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setProfesores(data); })
-        .catch(() => setError("Error buscando"))
-        .finally(() => setLoading(false));
-      return;
-    }
-    if (text.length >= 2) {
-      setLoading(true);
-      fetch(`${BASE_URL}/profesores/search/${encodeURIComponent(text)}`)
-        .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setProfesores(data); })
-        .catch(() => setError("Error buscando"))
-        .finally(() => setLoading(false));
-    }
+  // Initial load
+  useEffect(() => {
+    executeSearch();
   }, []);
 
   const handlePress = (prof: any) => {
@@ -66,26 +54,37 @@ export default function Profesores() {
         <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
       </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Buscar Profesor..."
-        placeholderTextColor="#888"
-        value={search}
-        onChangeText={handleSearch}
-      />
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar Profesor..."
+          placeholderTextColor="#888"
+          value={search}
+          onChangeText={setSearch}
+          onSubmitEditing={executeSearch}
+        />
+        <TouchableOpacity style={styles.searchButton} onPress={executeSearch}>
+          <Text style={styles.searchButtonText}>Buscar</Text>
+        </TouchableOpacity>
+      </View>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
       {loading && <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 20 }} />}
 
       <ScrollView>
         {profesores.map((prof: any) => (
-          <TouchableOpacity key={prof._id || prof.id} style={styles.card} onPress={() => handlePress(prof)}>
+          <View key={prof._id || prof.name} style={styles.card}>
             <Image source={{ uri: prof.image_url || 'https://via.placeholder.com/150' }} style={styles.image} />
             <View style={styles.cardInfo}>
               <Text style={styles.name}>{prof.name}</Text>
-              <Text style={styles.type}>{prof.subject || 'Materia desconocida'}</Text>
+              <Text style={styles.summary} numberOfLines={2}>
+                {prof.subject || 'Materia desconocida'} - {prof.department || 'Sin departamento'}
+              </Text>
+              <TouchableOpacity style={styles.moreButton} onPress={() => handlePress(prof)}>
+                <Text style={styles.moreButtonText}>Mostrar más</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </View>
         ))}
         {!loading && profesores.length === 0 && (
           <Text style={styles.empty}>No se encontraron Profesores</Text>
@@ -120,12 +119,27 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
   },
+  searchContainer: {
+    flexDirection: "row",
+    marginBottom: 15,
+    gap: 10,
+  },
   input: {
+    flex: 1,
     backgroundColor: "#fff",
     borderRadius: 8,
     padding: 12,
-    marginBottom: 15,
     fontSize: 16,
+  },
+  searchButton: {
+    backgroundColor: "#2E7D32",
+    justifyContent: "center",
+    paddingHorizontal: 15,
+    borderRadius: 8,
+  },
+  searchButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
   },
   error: {
     color: "red",
@@ -153,10 +167,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "bold",
   },
-  type: {
+  summary: {
     color: "#aaa",
     fontSize: 14,
     marginTop: 4,
+    marginBottom: 10,
+  },
+  moreButton: {
+    backgroundColor: "#444",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  moreButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   empty: {
     color: "#666",
