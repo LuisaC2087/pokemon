@@ -87,6 +87,38 @@ export default function TabsLayout() {
         }}
       />
 
+      <Tabs.Screen
+        name="profesores"
+        options={{
+          title: "Profes",
+          tabBarActiveTintColor: "#2E7D32",
+
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="school"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="profesores-details"
+        options={{
+          title: "Detalles",
+          tabBarActiveTintColor: "#2E7D32",
+
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="person"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
     </Tabs>
   );
 }

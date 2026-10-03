@@ -22,6 +22,17 @@ services:
         sync: false
 
   - type: web
+    name: profesores-node
+    env: node
+    plan: free
+    rootDir: microservices/profesores-node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: MONGO_URL
+        sync: false
+
+  - type: web
     name: pokemon-frontend
     runtime: static
     buildCommand: npm install && npx expo export -p web
