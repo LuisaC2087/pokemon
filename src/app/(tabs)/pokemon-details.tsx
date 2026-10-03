@@ -20,7 +20,32 @@ export default function PokemonDetails() {
         <View style={styles.card}>
           <Image source={{ uri: selectedPokemon.image_url }} style={styles.image} />
           <Text style={styles.name}>{selectedPokemon.name}</Text>
-          <Text style={styles.type}>Tipo: {selectedPokemon.type}</Text>
+          <View style={styles.divider} />
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Tipo:</Text>
+            <Text style={styles.value}>{selectedPokemon.type}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Altura:</Text>
+            <Text style={styles.value}>{selectedPokemon.height || "?"} dm</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Peso:</Text>
+            <Text style={styles.value}>{selectedPokemon.weight || "?"} hg</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Habilidad:</Text>
+            <Text style={styles.value}>{selectedPokemon.ability || "Desconocida"}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Puntos de Salud (HP):</Text>
+            <Text style={styles.value}>{selectedPokemon.hp || "?"}</Text>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -75,8 +100,26 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 10,
   },
-  type: {
+  divider: {
+    height: 1,
+    backgroundColor: "#444",
+    width: "100%",
+    marginBottom: 15,
+  },
+  infoRow: {
+    flexDirection: "column",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  label: {
     color: "#aaa",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+  value: {
+    color: "#fff",
     fontSize: 18,
+    textAlign: "center",
   },
 });
