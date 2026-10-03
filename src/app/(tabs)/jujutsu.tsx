@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 
 export default function Anime() {
-  const [characters, setCharacters] = useState([]);
+  const [characters, setCharacters] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
@@ -25,7 +25,7 @@ export default function Anime() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Anime</Text>
+      <Text style={styles.header}>Jujutsu Kaisen</Text>
       
       <TextInput
         style={styles.input}

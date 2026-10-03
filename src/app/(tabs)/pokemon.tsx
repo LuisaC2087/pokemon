@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 
 export default function Pokemon() {
-  const [pokemons, setPokemons] = useState([]);
+  const [pokemons, setPokemons] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
