@@ -65,13 +65,11 @@ export default function Profesores() {
 
       <ScrollView>
         {profesores.map((prof: any) => (
-          <View key={prof._id || prof.name} style={styles.card}>
-            <Image source={{ uri: prof.image_url || 'https://via.placeholder.com/150' }} style={styles.image} />
+          <View key={prof._id || prof.nombre} style={styles.card}>
             <View style={styles.cardInfo}>
-              <Text style={styles.name}>{prof.name}</Text>
-              <Text style={styles.summary} numberOfLines={2}>
-                {prof.title || 'Título no especificado'}
-              </Text>
+              <Text style={styles.name}>{prof.nombre}</Text>
+              <Text style={styles.summary} numberOfLines={2}>{prof.profesion}</Text>
+              <Text style={styles.location}>{prof.ubicacion}</Text>
               <TouchableOpacity style={styles.moreButton} onPress={() => handlePress(prof)}>
                 <Text style={styles.moreButtonText}>Mostrar más</Text>
               </TouchableOpacity>
@@ -149,15 +147,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 15,
   },
-  image: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
   name: {
     color: "#fff",
     fontSize: 20,
     fontWeight: "bold",
+  },
+  location: {
+    color: "#4CAF50",
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 8,
   },
   summary: {
     color: "#aaa",

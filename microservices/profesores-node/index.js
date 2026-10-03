@@ -18,18 +18,55 @@ async function getDb() {
 
 /**
  * @swagger
- * /search/{name}:
+ * /search/{nombre}:
  *   get:
  *     summary: Buscar profesor por nombre
  *     parameters:
  *       - in: path
- *         name: name
+ *         name: nombre
  *         required: true
  *         schema:
  *           type: string
+ *         example: Elfar
  *     responses:
  *       200:
- *         description: Resultados de búsqueda
+ *         description: Profesor encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   nombre: { type: string }
+ *                   ubicacion: { type: string }
+ *                   profesion: { type: string }
+ *                   formacion:
+ *                     type: object
+ *                     properties:
+ *                       pregrado: { type: string }
+ *                       maestria: { type: string }
+ *                       universidad_pregrado: { type: string }
+ *                       universidad_maestria: { type: string }
+ *                   cargos: { type: array, items: { type: string } }
+ *                   experiencia:
+ *                     type: object
+ *                     properties:
+ *                       sena: { type: string }
+ *                       docencia_universitaria: { type: string }
+ *                   lenguajes_programacion: { type: array, items: { type: string } }
+ *                   bases_de_datos:
+ *                     type: object
+ *                     properties:
+ *                       sql: { type: array, items: { type: string } }
+ *                       nosql: { type: array, items: { type: string } }
+ *                   frontend: { type: array, items: { type: string } }
+ *                   backend: { type: array, items: { type: string } }
+ *                   sistemas_operativos: { type: array, items: { type: string } }
+ *                   otras_areas: { type: array, items: { type: string } }
+ *                   aptitudes_principales: { type: array, items: { type: string } }
+ *                   contactos: { type: number }
+ *                   linkedin: { type: string }
  */
 
 const swaggerSpec = swaggerJsDoc({
@@ -85,7 +122,7 @@ const server = http.createServer(async (req, res) => {
       const searchName = decodeURIComponent(req.url.split('/')[2] || '');
       const database = await getDb();
       const profesores = await database.collection('profesores')
-        .find({ name: { $regex: searchName, $options: 'i' } })
+        .find({ nombre: { $regex: searchName, $options: 'i' } })
         .toArray();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(profesores));
