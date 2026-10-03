@@ -9,7 +9,7 @@ async function getDb() {
   if (!db) {
     const client = new MongoClient(MONGO_URL);
     await client.connect();
-    db = client.db('escuela_db');
+    db = client.db('profesor_db');
   }
   return db;
 }

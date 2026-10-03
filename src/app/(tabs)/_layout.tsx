@@ -41,7 +41,13 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="pokemon-details"
-        options={{ href: null }}
+        options={{
+          title: "Datos",
+          tabBarActiveTintColor: "#3B4CCA",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="document-text" size={size} color={color} />
+          ),
+        }}
       />
 
       <Tabs.Screen
@@ -62,7 +68,13 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="jujutsu-details"
-        options={{ href: null }}
+        options={{
+          title: "Detalles",
+          tabBarActiveTintColor: "#D32F2F",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flash" size={size} color={color} />
+          ),
+        }}
       />
 
       <Tabs.Screen
