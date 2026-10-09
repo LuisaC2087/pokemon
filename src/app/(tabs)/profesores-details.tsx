@@ -1,11 +1,14 @@
-import { useContext } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
+import { useContext, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { AppContext } from "../../context/AppContext";
 
+const BASE_URL = "https://profesores-node-ueas.onrender.com";
+
 export default function ProfesoresDetails() {
-  const { selectedProfesor: p } = useContext(AppContext);
+  const { selectedProfesor: p, setSelectedProfesor } = useContext(AppContext);
   const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
 
   if (!p) {
     return (
@@ -17,6 +20,30 @@ export default function ProfesoresDetails() {
       </View>
     );
   }
+
+  const handleDelete = () => {
+    Alert.alert("Confirmar", "¿Estás seguro de que deseas eliminar este profesor?", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Eliminar", style: "destructive", onPress: async () => {
+          setDeleting(true);
+          try {
+            const res = await fetch(`${BASE_URL}/profesores/${p._id}`, { method: "DELETE" });
+            if (!res.ok) throw new Error("Error al eliminar");
+            Alert.alert("Éxito", "Profesor eliminado");
+            setSelectedProfesor(null);
+            router.push("/(tabs)/profesores");
+          } catch (err: any) {
+            Alert.alert("Error", err.message);
+          } finally {
+            setDeleting(false);
+          }
+      }}
+    ]);
+  };
+
+  const handleEdit = () => {
+    router.push("/(tabs)/profesores-form");
+  };
 
   const Section = ({ title }: { title: string }) => (
     <Text style={styles.sectionTitle}>{title}</Text>
@@ -50,6 +77,20 @@ export default function ProfesoresDetails() {
         <Text style={styles.name}>{p.nombre}</Text>
         <Text style={styles.profesion}>{p.profesion}</Text>
         <Text style={styles.ubicacion}>📍 {p.ubicacion}</Text>
+        
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+            <Text style={styles.actionText}>✏️ Editar</Text>
+          </TouchableOpacity>
+          {deleting ? (
+            <ActivityIndicator size="small" color="red" style={{ marginLeft: 10 }} />
+          ) : (
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+              <Text style={styles.actionText}>🗑️ Eliminar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <TouchableOpacity onPress={() => router.push("/(tabs)/profesores")}>
           <Text style={styles.backLink}>← Volver a la lista</Text>
         </TouchableOpacity>
@@ -138,6 +179,27 @@ const styles = StyleSheet.create({
   name: { fontSize: 24, fontWeight: "bold", color: "#fff", textAlign: "center" },
   profesion: { fontSize: 13, color: "#aaa", marginTop: 8, textAlign: "center", lineHeight: 20 },
   ubicacion: { fontSize: 13, color: "#4CAF50", marginTop: 6 },
+  actionButtons: {
+    flexDirection: "row",
+    marginTop: 15,
+    gap: 15,
+  },
+  editButton: {
+    backgroundColor: "#0277bd",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  deleteButton: {
+    backgroundColor: "#d32f2f",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  actionText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
   backLink: { color: "#64B5F6", marginTop: 15, fontSize: 14 },
   card: { backgroundColor: "#2a2a2a", margin: 15, marginBottom: 5, borderRadius: 15, padding: 16 },
   sectionTitle: { fontSize: 16, fontWeight: "bold", color: "#fff", marginBottom: 10, marginTop: 10, borderBottomWidth: 1, borderBottomColor: "#444", paddingBottom: 6 },

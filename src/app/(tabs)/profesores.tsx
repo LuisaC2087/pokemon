@@ -13,14 +13,13 @@ export default function Profesores() {
   const router = useRouter();
   const { setSelectedProfesor } = useContext(AppContext);
 
-  const executeSearch = useCallback(() => {
-    if (search.trim().length === 0) {
-      setProfesores([]);
-      return;
-    }
-    
+  const fetchProfesores = useCallback((searchTerm = "") => {
     setLoading(true);
-    fetch(`${BASE_URL}/search/${encodeURIComponent(search.trim())}`)
+    const url = searchTerm.trim().length > 0 
+      ? `${BASE_URL}/search/${encodeURIComponent(searchTerm.trim())}`
+      : `${BASE_URL}/profesores`;
+      
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setProfesores(data);
@@ -28,16 +27,24 @@ export default function Profesores() {
       })
       .catch(() => setError("Error buscando"))
       .finally(() => setLoading(false));
-  }, [search]);
-
-  // Remover carga inicial
-  useEffect(() => {
-    // Ya no cargamos la lista completa porque el backend ahora solo tiene la API de búsqueda
   }, []);
+
+  useEffect(() => {
+    fetchProfesores();
+  }, [fetchProfesores]);
+
+  const handleSearch = () => {
+    fetchProfesores(search);
+  };
 
   const handlePress = (prof: any) => {
     setSelectedProfesor(prof);
     router.push("/(tabs)/profesores-details");
+  };
+
+  const handleCreate = () => {
+    setSelectedProfesor(null);
+    router.push("/(tabs)/profesores-form");
   };
 
   return (
@@ -53,12 +60,16 @@ export default function Profesores() {
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
-          onSubmitEditing={executeSearch}
+          onSubmitEditing={handleSearch}
         />
-        <TouchableOpacity style={styles.searchButton} onPress={executeSearch}>
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
           <Text style={styles.searchButtonText}>Buscar</Text>
         </TouchableOpacity>
       </View>
+      
+      <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
+        <Text style={styles.createButtonText}>+ Agregar Profesor</Text>
+      </TouchableOpacity>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
       {loading && <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 20 }} />}
@@ -72,10 +83,10 @@ export default function Profesores() {
             />
             <View style={styles.cardInfo}>
               <Text style={styles.name}>{prof.nombre}</Text>
-              <Text style={styles.summary} numberOfLines={2}>{prof.profesion}</Text>
-              <Text style={styles.location}>{prof.ubicacion}</Text>
+              <Text style={styles.summary} numberOfLines={2}>{prof.profesion || "Sin profesión"}</Text>
+              <Text style={styles.location}>{prof.ubicacion || "Sin ubicación"}</Text>
               <TouchableOpacity style={styles.moreButton} onPress={() => handlePress(prof)}>
-                <Text style={styles.moreButtonText}>Mostrar más</Text>
+                <Text style={styles.moreButtonText}>Ver / Editar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -100,7 +111,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 20,
-    gap: 10,
   },
   header: {
     color: "#fff",
@@ -108,14 +118,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
   },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
   searchContainer: {
     flexDirection: "row",
-    marginBottom: 15,
+    marginBottom: 10,
     gap: 10,
   },
   input: {
@@ -134,6 +139,18 @@ const styles = StyleSheet.create({
   searchButtonText: {
     color: "#fff",
     fontWeight: "bold",
+  },
+  createButton: {
+    backgroundColor: "#0277bd",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   error: {
     color: "red",

@@ -1,8 +1,8 @@
 const http = require('http');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const swaggerJsDoc = require('swagger-jsdoc');
 
-const MONGO_URL = process.env.MONGO_URL;
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
 let db = null;
 
 async function getDb() {
@@ -16,6 +16,69 @@ async function getDb() {
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     Profesor:
+ *       type: object
+ *       required:
+ *         - nombre
+ *         - departamento
+ *       properties:
+ *         nombre:
+ *           type: string
+ *           description: Nombre del profesor
+ *         departamento:
+ *           type: string
+ *           description: Departamento al que pertenece
+ * 
+ * /profesores:
+ *   get:
+ *     summary: Obtener todos los profesores
+ *     responses:
+ *       200:
+ *         description: Lista de profesores
+ *   post:
+ *     summary: Crear un nuevo profesor
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Profesor'
+ *     responses:
+ *       201:
+ *         description: Profesor creado exitosamente
+ * 
+ * /profesores/{id}:
+ *   put:
+ *     summary: Actualizar un profesor existente
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Profesor'
+ *     responses:
+ *       200:
+ *         description: Profesor actualizado exitosamente
+ *   delete:
+ *     summary: Eliminar un profesor
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profesor eliminado exitosamente
+ * 
  * /search/{nombre}:
  *   get:
  *     summary: Buscar profesor por nombre
@@ -34,13 +97,12 @@ async function getDb() {
 const swaggerSpec = swaggerJsDoc({
   swaggerDefinition: {
     openapi: '3.0.0',
-    info: { title: 'Profesores API', version: '1.0.0', description: 'Microservicio simple para consultar profesores' },
+    info: { title: 'Profesores API', version: '1.0.0', description: 'Microservicio CRUD para consultar y gestionar profesores' },
     servers: [{ url: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000' }],
   },
   apis: [__filename],
 });
 
-// HTML de Swagger UI usando CDN (sin paquete swagger-ui-dist)
 const swaggerHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -58,38 +120,79 @@ const swaggerHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const getRequestBody = (req) => {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+};
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.writeHead(200).end();
 
-  // Swagger UI (CDN)
   if (req.url === '/api-docs' || req.url === '/api-docs/') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     return res.end(swaggerHtml);
   }
 
-  // Swagger JSON spec
   if (req.url === '/swagger.json') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(swaggerSpec));
   }
 
-  // ÚNICA API: Buscar profesor por nombre
-  if (req.method === 'GET' && req.url.startsWith('/search/')) {
-    try {
+  try {
+    const database = await getDb();
+    const collection = database.collection('profesores');
+
+    if (req.url.startsWith('/search/') && req.method === 'GET') {
       const searchName = decodeURIComponent(req.url.split('/')[2] || '');
-      const database = await getDb();
-      const profesores = await database.collection('profesores')
-        .find({ nombre: { $regex: searchName, $options: 'i' } })
-        .toArray();
+      const profesores = await collection.find({ nombre: { $regex: searchName, $options: 'i' } }).toArray();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(profesores));
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: err.message }));
     }
+
+    if (req.url === '/profesores' && req.method === 'GET') {
+      const profesores = await collection.find({}).toArray();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(profesores));
+    }
+
+    if (req.url === '/profesores' && req.method === 'POST') {
+      const body = await getRequestBody(req);
+      const result = await collection.insertOne(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'Profesor creado', id: result.insertedId }));
+    }
+
+    if (req.url.startsWith('/profesores/') && req.method === 'PUT') {
+      const id = req.url.split('/')[2];
+      const body = await getRequestBody(req);
+      const result = await collection.updateOne({ _id: new ObjectId(id) }, { $set: body });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'Profesor actualizado', modifiedCount: result.modifiedCount }));
+    }
+
+    if (req.url.startsWith('/profesores/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[2];
+      const result = await collection.deleteOne({ _id: new ObjectId(id) });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'Profesor eliminado', deletedCount: result.deletedCount }));
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: err.message }));
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
