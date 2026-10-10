@@ -1,18 +1,25 @@
+
 const http = require('http');
-const { MongoClient, ObjectId } = require('mongodb');
+const { randomUUID } = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 const swaggerJsDoc = require('swagger-jsdoc');
 
+// =====================================================
+// CONFIGURACIÓN DE SUPABASE
+// =====================================================
 
-const { createClient } = require('@supabase/supabase-js');
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
-if (!process.env.SUPABASE_URL ||
-    !process.env.SUPABASE_SECRET_KEY) {
-  throw new Error('Faltan las variables de Supabase');
+if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+  throw new Error(
+    'Faltan las variables SUPABASE_URL o SUPABASE_SECRET_KEY'
+  );
 }
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY,
+  SUPABASE_URL,
+  SUPABASE_SECRET_KEY,
   {
     auth: {
       autoRefreshToken: false,
@@ -22,6 +29,11 @@ const supabase = createClient(
   }
 );
 
+const TABLE = 'profesores';
+
+// =====================================================
+// DOCUMENTACIÓN SWAGGER
+// =====================================================
 
 /**
  * @swagger
@@ -33,13 +45,22 @@ const supabase = createClient(
  *         - nombre
  *         - departamento
  *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
  *         nombre:
  *           type: string
- *           description: Nombre del profesor
  *         departamento:
  *           type: string
- *           description: Departamento al que pertenece
- * 
+ *         formacion:
+ *           type: object
+ *           additionalProperties: true
+ *         experiencia:
+ *           type: array
+ *           items:
+ *             type: object
+ *             additionalProperties: true
+ *
  * /profesores:
  *   get:
  *     summary: Obtener todos los profesores
@@ -47,7 +68,7 @@ const supabase = createClient(
  *       200:
  *         description: Lista de profesores
  *   post:
- *     summary: Crear un nuevo profesor
+ *     summary: Crear un profesor
  *     requestBody:
  *       required: true
  *       content:
@@ -56,17 +77,18 @@ const supabase = createClient(
  *             $ref: '#/components/schemas/Profesor'
  *     responses:
  *       201:
- *         description: Profesor creado exitosamente
- * 
+ *         description: Profesor creado
+ *
  * /profesores/{id}:
  *   put:
- *     summary: Actualizar un profesor existente
+ *     summary: Actualizar un profesor
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
  *     requestBody:
  *       required: true
  *       content:
@@ -75,7 +97,9 @@ const supabase = createClient(
  *             $ref: '#/components/schemas/Profesor'
  *     responses:
  *       200:
- *         description: Profesor actualizado exitosamente
+ *         description: Profesor actualizado
+ *       404:
+ *         description: Profesor no encontrado
  *   delete:
  *     summary: Eliminar un profesor
  *     parameters:
@@ -84,13 +108,16 @@ const supabase = createClient(
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
  *     responses:
  *       200:
- *         description: Profesor eliminado exitosamente
- * 
+ *         description: Profesor eliminado
+ *       404:
+ *         description: Profesor no encontrado
+ *
  * /search/{nombre}:
  *   get:
- *     summary: Buscar profesor por nombre
+ *     summary: Buscar profesores por nombre
  *     parameters:
  *       - in: path
  *         name: nombre
@@ -100,16 +127,24 @@ const supabase = createClient(
  *         example: Elfar
  *     responses:
  *       200:
- *         description: Profesor encontrado
+ *         description: Resultados de búsqueda
  */
 
 const swaggerSpec = swaggerJsDoc({
   swaggerDefinition: {
     openapi: '3.0.0',
-    info: { title: 'Profesores API', version: '1.0.0', description: 'Microservicio CRUD para consultar y gestionar profesores' },
-    servers: [{ url: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000' }],
+    info: {
+      title: 'Profesores API',
+      version: '2.0.0',
+      description: 'Microservicio CRUD de profesores con Supabase PostgreSQL'
+    },
+    servers: [
+      {
+        url: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000'
+      }
+    ]
   },
-  apis: [__filename],
+  apis: [__filename]
 });
 
 const swaggerHtml = `<!DOCTYPE html>
@@ -118,95 +153,339 @@ const swaggerHtml = `<!DOCTYPE html>
   <title>Profesores API Docs</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
 </head>
 <body>
   <div id="swagger-ui"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
   <script>
-    SwaggerUIBundle({ url: '/swagger.json', dom_id: '#swagger-ui', presets: [SwaggerUIBundle.presets.apis] });
+    SwaggerUIBundle({
+      url: '/swagger.json',
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis]
+    });
   </script>
 </body>
 </html>`;
 
-const getRequestBody = (req) => {
+// =====================================================
+// UTILIDADES HTTP
+// =====================================================
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8'
+  });
+  res.end(JSON.stringify(data));
+}
+
+function getRequestBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let tooLarge = false;
+
     req.on('data', chunk => {
       body += chunk.toString();
-    });
-    req.on('end', () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (err) {
-        reject(err);
+
+      if (Buffer.byteLength(body, 'utf8') > 1024 * 1024) {
+        tooLarge = true;
+        reject(new HttpError(413, 'El cuerpo de la solicitud es demasiado grande'));
+        req.destroy();
       }
     });
+
+    req.on('end', () => {
+      if (tooLarge) return;
+
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new HttpError(400, 'El cuerpo debe contener JSON válido'));
+      }
+    });
+
+    req.on('error', reject);
   });
-};
+}
+
+// Conserva los campos adicionales dentro de la columna JSONB "datos".
+function prepareProfesor(body, existingDatos = {}) {
+  const {
+    id,
+    nombre,
+    departamento,
+    datos,
+    actualizado_en,
+    estado_sincronizacion,
+    ...otrosCampos
+  } = body;
+
+  if (typeof nombre !== 'string' || !nombre.trim()) {
+    throw new HttpError(400, 'El nombre es obligatorio y debe ser texto');
+  }
+
+  if (typeof departamento !== 'string' || !departamento.trim()) {
+    throw new HttpError(400, 'El departamento es obligatorio y debe ser texto');
+  }
+
+  if (datos !== undefined &&
+      (datos === null || typeof datos !== 'object' || Array.isArray(datos))) {
+    throw new HttpError(400, 'El campo datos debe ser un objeto JSON');
+  }
+
+  return {
+    nombre: nombre.trim(),
+    departamento: departamento.trim(),
+    datos: {
+      ...existingDatos,
+      ...(datos || {}),
+      ...otrosCampos
+    },
+    actualizado_en: new Date().toISOString()
+  };
+}
+
+// Devuelve los campos JSONB junto con los campos principales.
+function formatProfesor(row) {
+  return {
+    ...(row.datos || {}),
+    id: row.id,
+    nombre: row.nombre,
+    departamento: row.departamento,
+    actualizado_en: row.actualizado_en
+  };
+}
+
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+// =====================================================
+// SERVIDOR Y RUTAS
+// =====================================================
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.writeHead(200).end();
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PUT, DELETE, OPTIONS'
+  );
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization'
+  );
 
-  if (req.url === '/api-docs' || req.url === '/api-docs/') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+  if (req.method === 'OPTIONS') {
+    return res.writeHead(204).end();
+  }
+
+  const url = new URL(
+    req.url,
+    `http://${req.headers.host || 'localhost'}`
+  );
+  const pathname = decodeURIComponent(url.pathname);
+
+  // Documentación
+  if (pathname === '/api-docs' || pathname === '/api-docs/') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(swaggerHtml);
   }
 
-  if (req.url === '/swagger.json') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(swaggerSpec));
+  if (pathname === '/swagger.json') {
+    return sendJson(res, 200, swaggerSpec);
+  }
+
+  // Estado del servicio
+  if (pathname === '/health' && req.method === 'GET') {
+    return sendJson(res, 200, { status: 'ok' });
   }
 
   try {
-    const database = await getDb();
-    const collection = database.collection('profesores');
+    // Prueba real de acceso a Supabase
+    if (pathname === '/test-supabase' && req.method === 'GET') {
+      const { error } = await supabase
+        .from(TABLE)
+        .select('id')
+        .limit(1);
 
-    if (req.url.startsWith('/search/') && req.method === 'GET') {
-      const searchName = decodeURIComponent(req.url.split('/')[2] || '');
-      const profesores = await collection.find({ nombre: { $regex: searchName, $options: 'i' } }).toArray();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify(profesores));
+      if (error) {
+        console.error('Error de Supabase:', error.message);
+        throw new HttpError(502, 'No se pudo consultar Supabase');
+      }
+
+      return sendJson(res, 200, {
+        conectado: true,
+        mensaje: 'Supabase responde correctamente'
+      });
     }
 
-    if (req.url === '/profesores' && req.method === 'GET') {
-      const profesores = await collection.find({}).toArray();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify(profesores));
+    // GET /profesores
+    if (pathname === '/profesores' && req.method === 'GET') {
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (error) throw error;
+
+      return sendJson(res, 200, data.map(formatProfesor));
     }
 
-    if (req.url === '/profesores' && req.method === 'POST') {
+    // POST /profesores
+    if (pathname === '/profesores' && req.method === 'POST') {
       const body = await getRequestBody(req);
-      const result = await collection.insertOne(body);
-      res.writeHead(201, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'Profesor creado', id: result.insertedId }));
+      const profesor = prepareProfesor(body);
+
+      // Aceptamos un UUID proporcionado por el cliente o generamos uno.
+      const id = body.id === undefined ? randomUUID() : body.id;
+
+      if (typeof id !== 'string' || !isValidUuid(id)) {
+        throw new HttpError(400, 'El id debe ser un UUID válido');
+      }
+
+      const { data, error } = await supabase
+        .from(TABLE)
+        .insert({ id, ...profesor })
+        .select('*')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          throw new HttpError(409, 'Ya existe un profesor con ese id');
+        }
+        throw error;
+      }
+
+      return sendJson(res, 201, {
+        message: 'Profesor creado',
+        profesor: formatProfesor(data)
+      });
     }
 
-    if (req.url.startsWith('/profesores/') && req.method === 'PUT') {
-      const id = req.url.split('/')[2];
+    // GET /search/:nombre
+    const searchMatch = pathname.match(/^\/search\/(.+)$/);
+
+    if (searchMatch && req.method === 'GET') {
+      const searchName = searchMatch[1].trim();
+
+      if (!searchName) {
+        throw new HttpError(400, 'Debes indicar un nombre para buscar');
+      }
+
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('*')
+        .ilike('nombre', `%${searchName}%`)
+        .order('nombre', { ascending: true });
+
+      if (error) throw error;
+
+      return sendJson(res, 200, data.map(formatProfesor));
+    }
+
+    // PUT /profesores/:id
+    const profesorMatch = pathname.match(/^\/profesores\/([^/]+)$/);
+
+    if (profesorMatch && req.method === 'PUT') {
+      const id = profesorMatch[1];
+
+      if (!isValidUuid(id)) {
+        throw new HttpError(400, 'El id debe ser un UUID válido');
+      }
+
       const body = await getRequestBody(req);
-      const result = await collection.updateOne({ _id: new ObjectId(id) }, { $set: body });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'Profesor actualizado', modifiedCount: result.modifiedCount }));
+
+      const { data: actual, error: selectError } = await supabase
+        .from(TABLE)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (selectError) throw selectError;
+
+      if (!actual) {
+        throw new HttpError(404, 'Profesor no encontrado');
+      }
+
+      // Permite actualizar solo algunos campos sin perder los demás.
+      const mergedBody = {
+        ...actual.datos,
+        ...body,
+        nombre: body.nombre ?? actual.nombre,
+        departamento: body.departamento ?? actual.departamento
+      };
+
+      const profesor = prepareProfesor(mergedBody, actual.datos);
+
+      const { data, error } = await supabase
+        .from(TABLE)
+        .update(profesor)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      return sendJson(res, 200, {
+        message: 'Profesor actualizado',
+        profesor: formatProfesor(data)
+      });
     }
 
-    if (req.url.startsWith('/profesores/') && req.method === 'DELETE') {
-      const id = req.url.split('/')[2];
-      const result = await collection.deleteOne({ _id: new ObjectId(id) });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'Profesor eliminado', deletedCount: result.deletedCount }));
+    // DELETE /profesores/:id
+    if (profesorMatch && req.method === 'DELETE') {
+      const id = profesorMatch[1];
+
+      if (!isValidUuid(id)) {
+        throw new HttpError(400, 'El id debe ser un UUID válido');
+      }
+
+      const { data, error } = await supabase
+        .from(TABLE)
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        throw new HttpError(404, 'Profesor no encontrado');
+      }
+
+      return sendJson(res, 200, {
+        message: 'Profesor eliminado',
+        deletedCount: 1
+      });
     }
+
+    return sendJson(res, 404, { error: 'Ruta no encontrada' });
+
   } catch (err) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: err.message }));
-  }
+    const status = err instanceof HttpError ? err.status : 500;
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Ruta no encontrada' }));
+    if (status === 500) {
+      console.error('Error interno:', err.message);
+    }
+
+    return sendJson(res, status, {
+      error: status === 500
+        ? 'Error interno del servidor'
+        : err.message
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Profesores service en puerto ${PORT}`));
+
+server.listen(PORT, () => {
+  console.log(`Profesores API escuchando en el puerto ${PORT}`);
+});
