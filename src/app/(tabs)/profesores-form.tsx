@@ -21,6 +21,34 @@ import {
 } from "../../services/sincronizacion";
 import { notificar } from "../../utils/alert";
 
+interface InputFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+}
+
+function InputField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+}: InputFieldProps) {
+  return (
+    <View style={styles.formGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#aaa"
+        autoCapitalize="sentences"
+      />
+    </View>
+  );
+}
+
 export default function ProfesoresForm() {
   const router = useRouter();
   const { selectedProfesor, setSelectedProfesor } = useContext(AppContext);
@@ -221,28 +249,6 @@ export default function ProfesoresForm() {
     }
   };
 
-  const InputField = ({
-    label,
-    field,
-    placeholder,
-  }: {
-    label: string;
-    field: keyof typeof formData;
-    placeholder: string;
-  }) => (
-    <View style={styles.formGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={formData[field]}
-        onChangeText={(value) => handleChange(field, value)}
-        placeholder={placeholder}
-        placeholderTextColor="#aaa"
-        autoCapitalize="sentences"
-      />
-    </View>
-  );
-
   return (
     <LinearGradient
       colors={["#1a2a6c", "#112240", "#0a192f"]}
@@ -298,54 +304,68 @@ export default function ProfesoresForm() {
           </View>
 
           <Text style={styles.sectionTitle}>Datos personales</Text>
-          <InputField label="Nombre *" field="nombre" placeholder="Ej: John Doe" />
+          <InputField
+            label="Nombre *"
+            value={formData.nombre}
+            onChangeText={(v) => handleChange("nombre", v)}
+            placeholder="Ej: John Doe"
+          />
           <InputField
             label="Departamento *"
-            field="departamento"
+            value={formData.departamento}
+            onChangeText={(v) => handleChange("departamento", v)}
             placeholder="Ej: Sistemas"
           />
           <InputField
             label="Profesión"
-            field="profesion"
+            value={formData.profesion}
+            onChangeText={(v) => handleChange("profesion", v)}
             placeholder="Ej: Ingeniero de Software"
           />
           <InputField
             label="Ubicación"
-            field="ubicacion"
+            value={formData.ubicacion}
+            onChangeText={(v) => handleChange("ubicacion", v)}
             placeholder="Ej: Bogotá"
           />
 
           <Text style={styles.sectionTitle}>Formación</Text>
           <InputField
             label="Pregrado"
-            field="pregrado"
+            value={formData.pregrado}
+            onChangeText={(v) => handleChange("pregrado", v)}
             placeholder="Ingeniería..."
           />
           <InputField
             label="Universidad (Pregrado)"
-            field="universidad_pregrado"
+            value={formData.universidad_pregrado}
+            onChangeText={(v) => handleChange("universidad_pregrado", v)}
             placeholder="UNAL"
           />
           <InputField
             label="Maestría"
-            field="maestria"
+            value={formData.maestria}
+            onChangeText={(v) => handleChange("maestria", v)}
             placeholder="Maestría en..."
           />
           <InputField
             label="Universidad (Maestría)"
-            field="universidad_maestria"
+            value={formData.universidad_maestria}
+            onChangeText={(v) => handleChange("universidad_maestria", v)}
             placeholder="Los Andes"
           />
 
           <Text style={styles.sectionTitle}>Experiencia</Text>
           <InputField
             label="SENA"
-            field="exp_sena"
+            value={formData.exp_sena}
+            onChangeText={(v) => handleChange("exp_sena", v)}
             placeholder="Años o descripción"
           />
           <InputField
             label="Docencia Universitaria"
-            field="exp_docencia"
+            value={formData.exp_docencia}
+            onChangeText={(v) => handleChange("exp_docencia", v)}
             placeholder="Años o descripción"
           />
 
@@ -354,34 +374,40 @@ export default function ProfesoresForm() {
           </Text>
           <InputField
             label="Cargos"
-            field="cargos"
+            value={formData.cargos}
+            onChangeText={(v) => handleChange("cargos", v)}
             placeholder="Docente, Investigador"
           />
           <InputField
             label="Lenguajes de Programación"
-            field="lenguajes"
+            value={formData.lenguajes}
+            onChangeText={(v) => handleChange("lenguajes", v)}
             placeholder="JS, Python, Java"
           />
           <InputField
             label="Bases de Datos SQL"
-            field="bd_sql"
+            value={formData.bd_sql}
+            onChangeText={(v) => handleChange("bd_sql", v)}
             placeholder="MySQL, PostgreSQL"
           />
           <InputField
             label="Bases de Datos NoSQL"
-            field="bd_nosql"
+            value={formData.bd_nosql}
+            onChangeText={(v) => handleChange("bd_nosql", v)}
             placeholder="MongoDB, Redis"
           />
 
           <Text style={styles.sectionTitle}>Redes y contacto</Text>
           <InputField
             label="LinkedIn"
-            field="linkedin"
+            value={formData.linkedin}
+            onChangeText={(v) => handleChange("linkedin", v)}
             placeholder="https://linkedin.com/..."
           />
           <InputField
             label="Teléfono / Contacto"
-            field="contactos"
+            value={formData.contactos}
+            onChangeText={(v) => handleChange("contactos", v)}
             placeholder="3000000000"
           />
 
