@@ -29,8 +29,11 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: MONGO_URL
-        value: mongodb+srv://lfc20082019_db_user:tT3jvlL3V9JgTnjS@cluster0.qnsymcp.mongodb.net/?appName=Cluster0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+
 
   - type: web
     name: pokemon-frontend

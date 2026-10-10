@@ -2,17 +2,26 @@ const http = require('http');
 const { MongoClient, ObjectId } = require('mongodb');
 const swaggerJsDoc = require('swagger-jsdoc');
 
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
-let db = null;
 
-async function getDb() {
-  if (!db) {
-    const client = new MongoClient(MONGO_URL);
-    await client.connect();
-    db = client.db('profesor_db');
-  }
-  return db;
+const { createClient } = require('@supabase/supabase-js');
+
+if (!process.env.SUPABASE_URL ||
+    !process.env.SUPABASE_SECRET_KEY) {
+  throw new Error('Faltan las variables de Supabase');
 }
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SECRET_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false
+    }
+  }
+);
+
 
 /**
  * @swagger
