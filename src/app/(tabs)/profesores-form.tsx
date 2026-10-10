@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useContext } from "react";
 import {
   View,
@@ -7,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Image,
 } from "react-native";
@@ -15,19 +13,22 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import NetInfo from "@react-native-community/netinfo";
 
 import { AppContext } from "../../context/AppContext";
 import {
   crearProfesorService,
   actualizarProfesorService,
 } from "../../services/sincronizacion";
+import { notificar } from "../../utils/alert";
 
 export default function ProfesoresForm() {
   const router = useRouter();
   const { selectedProfesor, setSelectedProfesor } = useContext(AppContext);
 
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
   const isEditing = !!(selectedProfesor?.id || selectedProfesor?._id);
 
   const [formData, setFormData] = useState({
@@ -90,43 +91,56 @@ export default function ProfesoresForm() {
   }, [selectedProfesor]);
 
   const handleChange = (name: string, value: string) => {
+    setErrorMsg("");
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const pickImage = async () => {
-    const { status } =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (status !== "granted") {
-      Alert.alert(
-        "Permiso denegado",
-        "Se necesitan permisos para acceder a la galería."
-      );
-      return;
-    }
+      if (status !== "granted") {
+        notificar(
+          "Permiso requerido",
+          "Se necesitan permisos para acceder a la galería de fotos."
+        );
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets?.[0]?.base64) {
-      handleChange(
-        "imagen_url",
-        `data:image/jpeg;base64,${result.assets[0].base64}`
-      );
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const uri = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        handleChange("imagen_url", uri);
+      }
+    } catch (e: any) {
+      console.warn("Error al abrir galería:", e);
     }
   };
 
   const handleSave = async () => {
-    if (!formData.nombre.trim() || !formData.departamento.trim()) {
-      Alert.alert(
-        "Campos obligatorios",
-        "El nombre y el departamento son obligatorios."
-      );
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    if (!formData.nombre.trim()) {
+      setErrorMsg("El nombre del profesor es obligatorio.");
+      notificar("Campo requerido", "El nombre del profesor es obligatorio.");
+      return;
+    }
+
+    if (!formData.departamento.trim()) {
+      setErrorMsg("El departamento es obligatorio.");
+      notificar("Campo requerido", "El departamento es obligatorio.");
       return;
     }
 
@@ -136,12 +150,12 @@ export default function ProfesoresForm() {
 
     const payload = {
       ...(selectedProfesor || {}),
-      ...(profesorId ? { id: profesorId } : {}),
+      ...(profesorId ? { id: String(profesorId) } : {}),
       nombre: formData.nombre.trim(),
       departamento: formData.departamento.trim(),
       profesion: formData.profesion.trim(),
       ubicacion: formData.ubicacion.trim(),
-      imagen_url: formData.imagen_url,
+      imagen_url: formData.imagen_url.trim(),
       linkedin: formData.linkedin.trim(),
       contactos: formData.contactos.trim(),
       formacion: {
@@ -185,26 +199,23 @@ export default function ProfesoresForm() {
       const mensaje =
         resultado.isOnline && resultado.sincronizado
           ? "El profesor se guardó y sincronizó exitosamente con el microservicio en internet."
-          : "Sin conexión a internet disponible. El profesor se guardó localmente en SQLite y se sincronizará automáticamente cuando vuelva la conexión.";
+          : "Sin conexión a internet. El profesor se guardó localmente en SQLite y se sincronizará automáticamente cuando vuelva a haber conexión.";
 
-      Alert.alert(
+      setSuccessMsg(mensaje);
+
+      notificar(
         resultado.isOnline ? "Guardado en línea" : "Guardado localmente (Offline)",
         mensaje,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              setSelectedProfesor(null);
-              router.replace("/(tabs)/profesores");
-            },
-          },
-        ]
+        () => {
+          setSelectedProfesor(null);
+          router.replace("/(tabs)/profesores");
+        }
       );
     } catch (err: any) {
-      Alert.alert(
-        "Error",
-        err?.message || "No se pudo guardar el profesor."
-      );
+      console.error("Error al guardar profesor:", err);
+      const msg = err?.message || "No se pudo guardar el profesor.";
+      setErrorMsg(msg);
+      notificar("Error al guardar", msg);
     } finally {
       setLoading(false);
     }
@@ -246,16 +257,37 @@ export default function ProfesoresForm() {
             {isEditing ? "Editar Profesor" : "Nuevo Profesor"}
           </Text>
 
+          {errorMsg !== "" && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
+            </View>
+          )}
+
+          {successMsg !== "" && (
+            <View style={styles.successBox}>
+              <Text style={styles.successText}>✅ {successMsg}</Text>
+            </View>
+          )}
+
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Imagen del Profesor</Text>
+            <Text style={styles.label}>Foto del Profesor</Text>
             <TouchableOpacity
               style={styles.imagePickerButton}
               onPress={pickImage}
             >
               <Text style={styles.imagePickerText}>
-                Seleccionar de la galería
+                📷 Seleccionar de la galería
               </Text>
             </TouchableOpacity>
+
+            <TextInput
+              style={[styles.input, { marginTop: 10 }]}
+              value={formData.imagen_url}
+              onChangeText={(val) => handleChange("imagen_url", val)}
+              placeholder="O pega aquí la URL de la imagen..."
+              placeholderTextColor="#888"
+              autoCapitalize="none"
+            />
 
             {formData.imagen_url ? (
               <Image
@@ -345,7 +377,7 @@ export default function ProfesoresForm() {
           <InputField
             label="LinkedIn"
             field="linkedin"
-            placeholder="https://linkedin..."
+            placeholder="https://linkedin.com/..."
           />
           <InputField
             label="Teléfono / Contacto"
@@ -365,7 +397,7 @@ export default function ProfesoresForm() {
               onPress={handleSave}
             >
               <Text style={styles.saveButtonText}>
-                Guardar Profesor
+                💾 Guardar Profesor
               </Text>
             </TouchableOpacity>
           )}
@@ -400,11 +432,39 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 28,
     fontWeight: "bold",
-    marginBottom: 20,
+    marginBottom: 15,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.5)",
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
+  },
+  errorBox: {
+    backgroundColor: "rgba(231, 76, 60, 0.2)",
+    borderColor: "rgba(231, 76, 60, 0.6)",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 15,
+  },
+  errorText: {
+    color: "#ff6b6b",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  successBox: {
+    backgroundColor: "rgba(46, 204, 113, 0.2)",
+    borderColor: "rgba(46, 204, 113, 0.6)",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 15,
+  },
+  successText: {
+    color: "#64ffda",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
   sectionTitle: {
     color: "#64ffda",
@@ -456,7 +516,7 @@ const styles = StyleSheet.create({
     borderColor: "#64ffda",
   },
   saveButton: {
-    backgroundColor: "rgba(46,204,113,0.8)",
+    backgroundColor: "rgba(46,204,113,0.85)",
     padding: 15,
     borderRadius: 12,
     alignItems: "center",

@@ -1,11 +1,57 @@
-import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
 import * as Crypto from "expo-crypto";
 
-let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let SQLite: any = null;
+if (Platform.OS !== "web") {
+  try {
+    SQLite = require("expo-sqlite");
+  } catch {
+    SQLite = null;
+  }
+}
+
+let databasePromise: Promise<any> | null = null;
+let useWebFallback = Platform.OS === "web";
+
+// Constantes para almacenamiento en Web / Fallback
+const STORAGE_PROFESORES_KEY = "pokemon_app_profesores_v1";
+const STORAGE_PENDIENTES_KEY = "pokemon_app_operaciones_pendientes_v1";
+
+// Memoria en caso de que localStorage no esté disponible
+let memoryProfesores: any[] = [];
+let memoryPendientes: any[] = [];
+
+function getWebStorage(key: string): any[] {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const data = window.localStorage.getItem(key);
+      return data ? JSON.parse(data) : [];
+    }
+  } catch {
+    // ignorar
+  }
+  return key === STORAGE_PROFESORES_KEY ? memoryProfesores : memoryPendientes;
+}
+
+function setWebStorage(key: string, data: any[]): void {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(key, JSON.stringify(data));
+      return;
+    }
+  } catch {
+    // ignorar
+  }
+  if (key === STORAGE_PROFESORES_KEY) {
+    memoryProfesores = data;
+  } else {
+    memoryPendientes = data;
+  }
+}
 
 export function crearId(): string {
   try {
-    if (Crypto.randomUUID) {
+    if (Crypto?.randomUUID) {
       return Crypto.randomUUID();
     }
   } catch {
@@ -18,32 +64,42 @@ export function crearId(): string {
   });
 }
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+export async function getDb(): Promise<any> {
+  if (useWebFallback || !SQLite) {
+    return null;
+  }
+
   if (!databasePromise) {
     databasePromise = (async () => {
-      const database = await SQLite.openDatabaseAsync("profesores.db");
+      try {
+        const database = await SQLite.openDatabaseAsync("profesores.db");
 
-      await database.execAsync(`
-        CREATE TABLE IF NOT EXISTS profesores (
-          id TEXT PRIMARY KEY NOT NULL,
-          nombre TEXT,
-          departamento TEXT,
-          datos TEXT NOT NULL DEFAULT '{}',
-          actualizado_en TEXT,
-          sincronizado INTEGER NOT NULL DEFAULT 1,
-          eliminado INTEGER NOT NULL DEFAULT 0
-        );
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS profesores (
+            id TEXT PRIMARY KEY NOT NULL,
+            nombre TEXT,
+            departamento TEXT,
+            datos TEXT NOT NULL DEFAULT '{}',
+            actualizado_en TEXT,
+            sincronizado INTEGER NOT NULL DEFAULT 1,
+            eliminado INTEGER NOT NULL DEFAULT 0
+          );
 
-        CREATE TABLE IF NOT EXISTS operaciones_pendientes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          profesor_id TEXT NOT NULL,
-          tipo TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          creado_en TEXT NOT NULL
-        );
-      `);
+          CREATE TABLE IF NOT EXISTS operaciones_pendientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profesor_id TEXT NOT NULL,
+            tipo TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            creado_en TEXT NOT NULL
+          );
+        `);
 
-      return database;
+        return database;
+      } catch (err) {
+        console.warn("No se pudo iniciar SQLite nativo, activando modo almacenamiento web/local:", err);
+        useWebFallback = true;
+        return null;
+      }
     })();
   }
 
@@ -51,7 +107,15 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 export async function initDatabase(): Promise<void> {
-  await getDb();
+  if (Platform.OS === "web") {
+    useWebFallback = true;
+    return;
+  }
+  try {
+    await getDb();
+  } catch {
+    useWebFallback = true;
+  }
 }
 
 /**
@@ -71,7 +135,6 @@ export function normalizar(p: any): any {
     datosObj = p.datos;
   }
 
-  // Mezclar datos: las propiedades externas sobreescriben datosObj
   const combinado: Record<string, any> = {
     ...datosObj,
     ...p,
@@ -109,19 +172,32 @@ export function normalizar(p: any): any {
 }
 
 /**
- * Guarda un profesor en SQLite garantizando que se serialicen todas las propiedades
- * en la columna `datos`.
+ * Guarda un profesor localmente (en SQLite si es nativo o localStorage si es web).
  */
 export async function guardarProfesorLocal(
   p: any,
   sincronizado = 0
 ): Promise<any> {
-  const database = await getDb();
   const profesor = normalizar({ ...p, sincronizado });
 
-  const { id, nombre, departamento, actualizado_en, eliminado } = profesor;
+  if (useWebFallback) {
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    const index = lista.findIndex((item) => String(item.id) === String(profesor.id));
+    if (index >= 0) {
+      lista[index] = profesor;
+    } else {
+      lista.push(profesor);
+    }
+    setWebStorage(STORAGE_PROFESORES_KEY, lista);
+    return profesor;
+  }
 
-  // Guardamos el objeto completo (incluyendo formación, experiencia, etc.) en datos
+  const database = await getDb();
+  if (!database) {
+    return guardarProfesorLocal(p, sincronizado);
+  }
+
+  const { id, nombre, departamento, actualizado_en, eliminado } = profesor;
   const datosJson = JSON.stringify(profesor);
 
   await database.runAsync(
@@ -145,7 +221,24 @@ export async function agregarPendiente(
   tipo: string,
   payload: any
 ): Promise<void> {
+  if (useWebFallback) {
+    const pendientes = getWebStorage(STORAGE_PENDIENTES_KEY);
+    const nuevaOp = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      profesor_id: String(id),
+      tipo,
+      payload: JSON.stringify(payload),
+      creado_en: new Date().toISOString(),
+    };
+    pendientes.push(nuevaOp);
+    setWebStorage(STORAGE_PENDIENTES_KEY, pendientes);
+    return;
+  }
+
   const database = await getDb();
+  if (!database) {
+    return agregarPendiente(id, tipo, payload);
+  }
 
   await database.runAsync(
     `INSERT INTO operaciones_pendientes
@@ -159,7 +252,18 @@ export async function agregarPendiente(
 }
 
 export async function listarProfesores(): Promise<any[]> {
+  if (useWebFallback) {
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    return lista
+      .filter((p) => Number(p.eliminado || 0) === 0)
+      .map((p) => normalizar(p))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+  }
+
   const database = await getDb();
+  if (!database) {
+    return listarProfesores();
+  }
 
   const rows: any[] = await database.getAllAsync(
     `SELECT * FROM profesores
@@ -177,9 +281,7 @@ export async function guardarProfesor(
   p: any,
   idExistente: string | null = null
 ): Promise<any> {
-  const database = await getDb();
   const id = String(idExistente || p.id || crearId());
-
   const profesor = normalizar({
     ...p,
     id,
@@ -188,7 +290,41 @@ export async function guardarProfesor(
 
   await guardarProfesorLocal(profesor, 0);
 
-  // Verificar si ya existe una operación pendiente para este profesor
+  if (useWebFallback) {
+    const pendientes = getWebStorage(STORAGE_PENDIENTES_KEY);
+    const opPostIndex = pendientes.findIndex(
+      (op) => String(op.profesor_id) === id && op.tipo === "POST"
+    );
+
+    if (opPostIndex >= 0) {
+      pendientes[opPostIndex].payload = JSON.stringify(profesor);
+      pendientes[opPostIndex].creado_en = new Date().toISOString();
+      setWebStorage(STORAGE_PENDIENTES_KEY, pendientes);
+    } else {
+      const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+      const existe = lista.some((item) => String(item.id) === id);
+      const opPutIndex = pendientes.findIndex(
+        (op) => String(op.profesor_id) === id && op.tipo === "PUT"
+      );
+
+      if (opPutIndex >= 0) {
+        pendientes[opPutIndex].payload = JSON.stringify(profesor);
+        pendientes[opPutIndex].creado_en = new Date().toISOString();
+        setWebStorage(STORAGE_PENDIENTES_KEY, pendientes);
+      } else {
+        const tipo = idExistente || (p.id && existe) ? "PUT" : "POST";
+        await agregarPendiente(id, tipo, profesor);
+      }
+    }
+
+    return profesor;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return guardarProfesor(p, idExistente);
+  }
+
   const pendientes: any[] = await database.getAllAsync(
     `SELECT id, tipo FROM operaciones_pendientes
      WHERE profesor_id = ?
@@ -199,7 +335,6 @@ export async function guardarProfesor(
   const operacionPost = pendientes.find((op) => op.tipo === "POST");
 
   if (operacionPost) {
-    // Si aún no se ha sincronizado la creación, actualizamos el payload del POST existente
     await database.runAsync(
       `UPDATE operaciones_pendientes
        SET payload = ?, creado_en = ?
@@ -209,7 +344,6 @@ export async function guardarProfesor(
       operacionPost.id
     );
   } else {
-    // Verificar si ya existe en la base de datos (con sincronizado = 1)
     const existente: any = await database.getFirstAsync(
       `SELECT id FROM profesores WHERE id = ?`,
       id
@@ -239,8 +373,48 @@ export async function guardarProfesor(
  * Elimina un profesor localmente y registra la operación DELETE pendiente si corresponde.
  */
 export async function eliminarProfesor(id: string): Promise<void> {
-  const database = await getDb();
   const idStr = String(id);
+
+  if (useWebFallback) {
+    const pendientes = getWebStorage(STORAGE_PENDIENTES_KEY);
+    const tieneCreacionPendiente = pendientes.some(
+      (op) => String(op.profesor_id) === idStr && op.tipo === "POST"
+    );
+
+    if (tieneCreacionPendiente) {
+      const nuevosPendientes = pendientes.filter(
+        (op) => String(op.profesor_id) !== idStr
+      );
+      setWebStorage(STORAGE_PENDIENTES_KEY, nuevosPendientes);
+
+      const lista = getWebStorage(STORAGE_PROFESORES_KEY).filter(
+        (item) => String(item.id) !== idStr
+      );
+      setWebStorage(STORAGE_PROFESORES_KEY, lista);
+      return;
+    }
+
+    // Limpiar anteriores operaciones pendientes de este profesor
+    const filtrados = pendientes.filter((op) => String(op.profesor_id) !== idStr);
+    setWebStorage(STORAGE_PENDIENTES_KEY, filtrados);
+
+    // Marcar como eliminado en lista local
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    const target = lista.find((item) => String(item.id) === idStr);
+    if (target) {
+      target.eliminado = 1;
+      target.sincronizado = 0;
+      setWebStorage(STORAGE_PROFESORES_KEY, lista);
+    }
+
+    await agregarPendiente(idStr, "DELETE", { id: idStr });
+    return;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return eliminarProfesor(id);
+  }
 
   const profesor = await database.getFirstAsync(
     `SELECT * FROM profesores WHERE id = ?`,
@@ -259,7 +433,6 @@ export async function eliminarProfesor(id: string): Promise<void> {
   const tieneCreacionPendiente = pendientes.some((op) => op.tipo === "POST");
 
   if (tieneCreacionPendiente) {
-    // Si nunca se envió al servidor, solo borramos de pendientes y de profesores locales
     await database.runAsync(
       `DELETE FROM operaciones_pendientes WHERE profesor_id = ?`,
       idStr
@@ -271,31 +444,44 @@ export async function eliminarProfesor(id: string): Promise<void> {
     return;
   }
 
-  // Si existe en el servidor:
-  // Borramos cualquier operación pendiente anterior de este id (ej. PUT pendientes)
   await database.runAsync(
     `DELETE FROM operaciones_pendientes WHERE profesor_id = ?`,
     idStr
   );
 
-  // Marcamos como eliminado localmente y no sincronizado
   await database.runAsync(
     `UPDATE profesores SET eliminado = 1, sincronizado = 0 WHERE id = ?`,
     idStr
   );
 
-  // Agregamos la operación DELETE a la cola de pendientes
   await agregarPendiente(idStr, "DELETE", { id: idStr });
 }
 
 /**
- * Elimina permanentemente de SQLite (usado cuando la eliminación remota fue exitosa).
+ * Elimina permanentemente de almacenamiento local (usado cuando la eliminación remota fue exitosa).
  */
 export async function eliminarProfesorLocalDefinitivo(
   id: string
 ): Promise<void> {
-  const database = await getDb();
   const idStr = String(id);
+
+  if (useWebFallback) {
+    const pendientes = getWebStorage(STORAGE_PENDIENTES_KEY).filter(
+      (op) => String(op.profesor_id) !== idStr
+    );
+    setWebStorage(STORAGE_PENDIENTES_KEY, pendientes);
+
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY).filter(
+      (item) => String(item.id) !== idStr
+    );
+    setWebStorage(STORAGE_PROFESORES_KEY, lista);
+    return;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return eliminarProfesorLocalDefinitivo(id);
+  }
 
   await database.runAsync(
     `DELETE FROM operaciones_pendientes WHERE profesor_id = ?`,
@@ -308,7 +494,14 @@ export async function eliminarProfesorLocalDefinitivo(
 }
 
 export async function obtenerPendientes(): Promise<any[]> {
+  if (useWebFallback) {
+    return getWebStorage(STORAGE_PENDIENTES_KEY);
+  }
+
   const database = await getDb();
+  if (!database) {
+    return obtenerPendientes();
+  }
 
   return database.getAllAsync(
     `SELECT * FROM operaciones_pendientes ORDER BY id`
@@ -316,7 +509,14 @@ export async function obtenerPendientes(): Promise<any[]> {
 }
 
 export async function contarPendientes(): Promise<number> {
+  if (useWebFallback) {
+    return getWebStorage(STORAGE_PENDIENTES_KEY).length;
+  }
+
   const database = await getDb();
+  if (!database) {
+    return contarPendientes();
+  }
 
   const res: any = await database.getFirstAsync(
     `SELECT COUNT(*) as total FROM operaciones_pendientes`
@@ -325,8 +525,19 @@ export async function contarPendientes(): Promise<number> {
   return res ? Number(res.total) : 0;
 }
 
-export async function eliminarPendiente(id: number): Promise<void> {
+export async function eliminarPendiente(id: number | string): Promise<void> {
+  if (useWebFallback) {
+    const pendientes = getWebStorage(STORAGE_PENDIENTES_KEY).filter(
+      (op) => String(op.id) !== String(id)
+    );
+    setWebStorage(STORAGE_PENDIENTES_KEY, pendientes);
+    return;
+  }
+
   const database = await getDb();
+  if (!database) {
+    return eliminarPendiente(id);
+  }
 
   await database.runAsync(
     `DELETE FROM operaciones_pendientes WHERE id = ?`,
@@ -338,8 +549,27 @@ export async function marcarSincronizado(
   id: string,
   tipo: string
 ): Promise<void> {
-  const database = await getDb();
   const idStr = String(id);
+
+  if (useWebFallback) {
+    if (tipo === "DELETE") {
+      await eliminarProfesorLocalDefinitivo(idStr);
+    } else {
+      const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+      const target = lista.find((item) => String(item.id) === idStr);
+      if (target) {
+        target.sincronizado = 1;
+        target.eliminado = 0;
+        setWebStorage(STORAGE_PROFESORES_KEY, lista);
+      }
+    }
+    return;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return marcarSincronizado(id, tipo);
+  }
 
   if (tipo === "DELETE") {
     await database.runAsync(
@@ -357,18 +587,31 @@ export async function marcarSincronizado(
 }
 
 /**
- * Guarda un profesor remoto en SQLite evitando sobreescribir cambios locales pendientes.
+ * Guarda un profesor remoto en SQLite/local evitando sobreescribir cambios locales pendientes.
  */
 export async function guardarProfesorRemoto(p: any): Promise<void> {
-  const database = await getDb();
   const id = String(p.id);
+
+  if (useWebFallback) {
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    const local = lista.find((item) => String(item.id) === id);
+    if (local && (Number(local.sincronizado) === 0 || Number(local.eliminado) === 1)) {
+      return;
+    }
+    await guardarProfesorLocal(p, 1);
+    return;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return guardarProfesorRemoto(p);
+  }
 
   const local: any = await database.getFirstAsync(
     `SELECT sincronizado, eliminado FROM profesores WHERE id = ?`,
     id
   );
 
-  // No sobrescribir cambios locales que aún no se han sincronizado
   if (local && (local.sincronizado === 0 || local.eliminado === 1)) {
     return;
   }
@@ -377,14 +620,11 @@ export async function guardarProfesorRemoto(p: any): Promise<void> {
 }
 
 /**
- * Reconcilia la lista remota recibida con la base local:
- * - Actualiza/inserta los remotos (salvo que tengan cambios locales pendientes).
- * - Remueve de SQLite los profesores que ya no existen en el servidor y que estaban marcados sincronizados.
+ * Reconcilia la lista remota recibida con la base local.
  */
 export async function reconciliarProfesoresRemotos(
   remotos: any[]
 ): Promise<void> {
-  const database = await getDb();
   const idsRemotos = new Set<string>();
 
   for (const p of remotos) {
@@ -394,7 +634,22 @@ export async function reconciliarProfesoresRemotos(
     }
   }
 
-  // Eliminar registros locales sincronizados que ya no existan en el servidor
+  if (useWebFallback) {
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    const filtrados = lista.filter((loc) => {
+      // Conservar si es un cambio local no sincronizado o si aún existe en el servidor
+      if (Number(loc.sincronizado) === 0) return true;
+      return idsRemotos.has(String(loc.id));
+    });
+    setWebStorage(STORAGE_PROFESORES_KEY, filtrados);
+    return;
+  }
+
+  const database = await getDb();
+  if (!database) {
+    return reconciliarProfesoresRemotos(remotos);
+  }
+
   const locales: any[] = await database.getAllAsync(
     `SELECT id, sincronizado, eliminado FROM profesores`
   );
@@ -414,12 +669,25 @@ export async function reconciliarProfesoresRemotos(
 }
 
 export async function obtenerProfesorLocal(id: string): Promise<any> {
+  const idStr = String(id);
+
+  if (useWebFallback) {
+    const lista = getWebStorage(STORAGE_PROFESORES_KEY);
+    const row = lista.find(
+      (p) => String(p.id) === idStr && Number(p.eliminado || 0) === 0
+    );
+    return row ? normalizar(row) : null;
+  }
+
   const database = await getDb();
+  if (!database) {
+    return obtenerProfesorLocal(id);
+  }
 
   const row = await database.getFirstAsync(
     `SELECT * FROM profesores
      WHERE id = ? AND eliminado = 0`,
-    String(id)
+    idStr
   );
 
   if (!row) return null;
@@ -427,5 +695,4 @@ export async function obtenerProfesorLocal(id: string): Promise<any> {
   return normalizar(row);
 }
 
-// Alias para compatibilidad hacia atrás
 export const obtenerProfesor = obtenerProfesorLocal;

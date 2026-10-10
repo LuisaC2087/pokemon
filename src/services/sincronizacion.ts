@@ -45,14 +45,33 @@ async function fetchConTimeout(
 }
 
 /**
- * Comprueba si hay conexión a internet activa y verificable.
+ * Comprueba si hay conexión a internet activa y verificable tanto en web como en móvil.
  */
 export async function hayConexion(): Promise<boolean> {
   try {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.onLine === "boolean"
+    ) {
+      if (!navigator.onLine) {
+        return false;
+      }
+    }
+
     const state = await NetInfo.fetch();
-    return Boolean(state.isConnected && state.isInternetReachable !== false);
+    if (state.isConnected === false || state.isInternetReachable === false) {
+      return false;
+    }
+
+    return true;
   } catch {
-    return false;
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.onLine === "boolean"
+    ) {
+      return navigator.onLine;
+    }
+    return true;
   }
 }
 
@@ -120,7 +139,7 @@ export async function sincronizarPendientes(): Promise<{
             sincronizados++;
           } else {
             errores++;
-            break; // Posible corte de conexión
+            break;
           }
         } else {
           errores++;
@@ -185,7 +204,7 @@ export async function sincronizarPendientes(): Promise<{
     } catch (err) {
       console.warn("Fallo en sincronización de operación pendiente:", err);
       errores++;
-      break; // Detener ciclo si se cayó la red
+      break;
     }
   }
 
@@ -197,10 +216,10 @@ export async function sincronizarPendientes(): Promise<{
  * Si hay internet:
  *  1. Sincroniza pendientes.
  *  2. Consume el microservicio en internet.
- *  3. Actualiza el caché local SQLite.
+ *  3. Actualiza el almacenamiento local.
  *  4. Retorna la lista actualizada.
  * Si no hay internet o el servidor falla:
- *  Utiliza SQLite local.
+ *  Utiliza el almacenamiento local (SQLite/localStorage).
  */
 export async function consultarProfesores(searchTerm = ""): Promise<{
   profesores: any[];
@@ -213,7 +232,7 @@ export async function consultarProfesores(searchTerm = ""): Promise<{
 
   if (online) {
     try {
-      // 1. Sincronizar pendientes previos
+      // 1. Sincronizar pendientes previos si los hay
       const { totalSincronizados } = await sincronizarPendientes();
 
       // 2. Consumir el microservicio
@@ -237,12 +256,11 @@ export async function consultarProfesores(searchTerm = ""): Promise<{
             sincronizados: totalSincronizados,
           };
         } else {
-          // Para búsquedas: actualizar los remotos encontrados en SQLite
+          // Para búsquedas: actualizar los remotos encontrados localmente
           for (const item of listaRemota) {
             await guardarProfesorRemoto(item);
           }
 
-          // Mezclar con profesores locales pendientes que coincidan con la búsqueda
           const todosLocales = await listarProfesores();
           const localesFiltrados = todosLocales.filter((p: any) =>
             p.nombre?.toLowerCase().includes(termino)
@@ -256,11 +274,11 @@ export async function consultarProfesores(searchTerm = ""): Promise<{
         }
       }
     } catch (error) {
-      console.warn("Error consultando microservicio, recurriendo a SQLite:", error);
+      console.warn("Error consultando microservicio, recurriendo a base local:", error);
     }
   }
 
-  // Fallback offline a SQLite
+  // Fallback offline a almacenamiento local
   const locales = await listarProfesores();
   const filtrados = termino
     ? locales.filter((p: any) => p.nombre?.toLowerCase().includes(termino))
@@ -275,8 +293,8 @@ export async function consultarProfesores(searchTerm = ""): Promise<{
 
 /**
  * Crear un profesor.
- * Si hay internet: consume POST del microservicio y guarda en SQLite (sincronizado = 1).
- * Si no hay internet: guarda en SQLite (sincronizado = 0) y agrega a operaciones pendientes.
+ * Si hay internet: consume POST del microservicio y guarda localmente (sincronizado = 1).
+ * Si no hay internet: guarda localmente (sincronizado = 0) y agrega a operaciones pendientes.
  */
 export async function crearProfesorService(datos: any): Promise<{
   profesor: any;
@@ -296,9 +314,13 @@ export async function crearProfesorService(datos: any): Promise<{
 
   if (online) {
     try {
+      // Si no traía un ID previo del cliente, enviamos sin ID para que el microservicio
+      // asigne su UUID canónico; si ya traía un ID válido, lo enviamos.
+      const bodyEnvio = datos.id ? payload : { ...payload };
+
       const resp = await fetchConTimeout(`${API_BASE_URL}/profesores`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(bodyEnvio),
       });
 
       if (resp.status === 201 || resp.status === 200) {
@@ -315,8 +337,16 @@ export async function crearProfesorService(datos: any): Promise<{
           isOnline: true,
           sincronizado: true,
         };
+      } else {
+        const errorData = await resp.json().catch(() => ({}));
+        if (resp.status === 400 && errorData.error) {
+          throw new Error(errorData.error);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message && !error.message.includes("fetch")) {
+        throw error;
+      }
       console.warn("Fallo de red al crear profesor en microservicio:", error);
     }
   }
@@ -333,8 +363,8 @@ export async function crearProfesorService(datos: any): Promise<{
 
 /**
  * Actualizar un profesor.
- * Si hay internet: consume PUT del microservicio y actualiza SQLite (sincronizado = 1).
- * Si no hay internet: actualiza en SQLite (sincronizado = 0) y agrega a operaciones pendientes.
+ * Si hay internet: consume PUT del microservicio y actualiza localmente (sincronizado = 1).
+ * Si no hay internet: actualiza localmente (sincronizado = 0) y agrega a operaciones pendientes.
  */
 export async function actualizarProfesorService(
   id: string,
@@ -378,6 +408,31 @@ export async function actualizarProfesorService(
           isOnline: true,
           sincronizado: true,
         };
+      } else if (resp.status === 404) {
+        // Si no existe con ese ID en el servidor, intentamos crearlo con POST
+        const postResp = await fetchConTimeout(
+          `${API_BASE_URL}/profesores`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (postResp.status === 201 || postResp.status === 200) {
+          const servidor = await postResp.json().catch(() => payload);
+          const normalizadoServidor = normalizar({
+            ...payload,
+            ...servidor,
+          });
+
+          await guardarProfesorLocal(normalizadoServidor, 1);
+
+          return {
+            profesor: normalizadoServidor,
+            isOnline: true,
+            sincronizado: true,
+          };
+        }
       }
     } catch (error) {
       console.warn("Fallo de red al actualizar profesor en microservicio:", error);
@@ -396,8 +451,8 @@ export async function actualizarProfesorService(
 
 /**
  * Eliminar un profesor.
- * Si hay internet: consume DELETE del microservicio y elimina de SQLite.
- * Si no hay internet: marca eliminado en SQLite y agrega operación DELETE pendiente.
+ * Si hay internet: consume DELETE del microservicio y elimina del almacenamiento local.
+ * Si no hay internet: marca eliminado localmente y agrega operación DELETE pendiente.
  */
 export async function eliminarProfesorService(id: string): Promise<{
   id: string;
@@ -441,7 +496,7 @@ export async function eliminarProfesorService(id: string): Promise<{
 }
 
 /**
- * Buscar profesores en servidor o SQLite.
+ * Buscar profesores en servidor o localmente.
  */
 export async function buscarProfesoresRemoto(nombre: string): Promise<any[]> {
   const { profesores } = await consultarProfesores(nombre);
@@ -449,12 +504,13 @@ export async function buscarProfesoresRemoto(nombre: string): Promise<any[]> {
 }
 
 /**
- * Escucha cambios de red para sincronizar automáticamente en cuanto vuelva el internet.
+ * Escucha cambios de conectividad para sincronizar automáticamente en cuanto vuelva el internet.
  */
 export function suscribirSincronizacionAutomatica(
   onSincronizado: (resultado: { totalSincronizados: number }) => void
 ): () => void {
-  const unsubscribe = NetInfo.addEventListener(async (state) => {
+  // Listener NetInfo para móvil y web
+  const unsubscribeNetInfo = NetInfo.addEventListener(async (state) => {
     if (state.isConnected && state.isInternetReachable !== false) {
       try {
         const resultado = await sincronizarPendientes();
@@ -462,10 +518,33 @@ export function suscribirSincronizacionAutomatica(
           onSincronizado(resultado);
         }
       } catch (e) {
-        console.warn("Error en auto-sincronización:", e);
+        console.warn("Error en auto-sincronización NetInfo:", e);
       }
     }
   });
 
-  return unsubscribe;
+  // Listener para evento 'online' nativo en navegadores
+  let handleOnlineWeb: (() => void) | null = null;
+  if (typeof window !== "undefined" && window.addEventListener) {
+    handleOnlineWeb = async () => {
+      try {
+        const resultado = await sincronizarPendientes();
+        if (resultado.totalSincronizados > 0) {
+          onSincronizado(resultado);
+        }
+      } catch (e) {
+        console.warn("Error en auto-sincronización Web:", e);
+      }
+    };
+    window.addEventListener("online", handleOnlineWeb);
+  }
+
+  return () => {
+    if (typeof unsubscribeNetInfo === "function") {
+      unsubscribeNetInfo();
+    }
+    if (handleOnlineWeb && typeof window !== "undefined") {
+      window.removeEventListener("online", handleOnlineWeb);
+    }
+  };
 }

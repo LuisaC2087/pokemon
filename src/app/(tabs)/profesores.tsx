@@ -23,6 +23,7 @@ import {
   hayConexion,
 } from "../../services/sincronizacion";
 import { contarPendientes } from "../../database/sqlite";
+import { notificar } from "../../utils/alert";
 
 export default function Profesores() {
   const [profesores, setProfesores] = useState<any[]>([]);
@@ -129,7 +130,7 @@ export default function Profesores() {
   const handleSyncManual = async () => {
     const online = await hayConexion();
     if (!online) {
-      Alert.alert(
+      notificar(
         "Sin conexión",
         "No hay conexión a internet disponible para sincronizar con el microservicio en este momento."
       );
@@ -144,18 +145,18 @@ export default function Profesores() {
       setPendientesCount(pendientes);
 
       if (res.totalSincronizados > 0) {
-        Alert.alert(
+        notificar(
           "Sincronización exitosa",
           `Se sincronizaron ${res.totalSincronizados} operaciones pendientes con el microservicio.`
         );
       } else {
-        Alert.alert(
+        notificar(
           "Al día",
           "Todos los registros ya se encuentran sincronizados con el microservicio."
         );
       }
     } catch (err: any) {
-      Alert.alert(
+      notificar(
         "Error de sincronización",
         err?.message || "No se pudo sincronizar en este momento."
       );

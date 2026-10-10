@@ -15,6 +15,7 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
 import { eliminarProfesorService } from "../../services/sincronizacion";
+import { notificar, confirmar } from "../../utils/alert";
 
 export default function ProfesoresDetails() {
   const { selectedProfesor: p, setSelectedProfesor } =
@@ -44,47 +45,38 @@ export default function ProfesoresDetails() {
   }
 
   const handleDelete = () => {
-    Alert.alert(
+    confirmar(
       "Confirmar eliminación",
       "¿Estás seguro de que deseas eliminar este profesor?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            setDeleting(true);
+      async () => {
+        setDeleting(true);
 
-            try {
-              const id = p.id || p._id;
+        try {
+          const id = p.id || p._id;
 
-              if (!id) {
-                throw new Error("El profesor no tiene un ID válido.");
-              }
+          if (!id) {
+            throw new Error("El profesor no tiene un ID válido.");
+          }
 
-              const res = await eliminarProfesorService(String(id));
+          const res = await eliminarProfesorService(String(id));
 
-              setSelectedProfesor(null);
+          setSelectedProfesor(null);
 
-              Alert.alert(
-                res.isOnline ? "Profesor eliminado" : "Eliminado localmente (Offline)",
-                res.isOnline && res.sincronizado
-                  ? "El profesor fue eliminado exitosamente del microservicio y de la base local."
-                  : "Sin conexión. El profesor se eliminó localmente y se eliminará del servidor cuando vuelva el internet."
-              );
-
+          notificar(
+            res.isOnline ? "Profesor eliminado" : "Eliminado localmente (Offline)",
+            res.isOnline && res.sincronizado
+              ? "El profesor fue eliminado exitosamente del microservicio y de la base local."
+              : "Sin conexión. El profesor se eliminó localmente y se eliminará del servidor cuando vuelva el internet.",
+            () => {
               router.replace("/(tabs)/profesores");
-            } catch (err: any) {
-              Alert.alert(
-                "Error",
-                err?.message || "No se pudo eliminar el profesor."
-              );
-            } finally {
-              setDeleting(false);
             }
-          },
-        },
-      ]
+          );
+        } catch (err: any) {
+          notificar("Error", err?.message || "No se pudo eliminar el profesor.");
+        } finally {
+          setDeleting(false);
+        }
+      }
     );
   };
 
