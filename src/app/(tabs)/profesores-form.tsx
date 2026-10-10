@@ -19,12 +19,9 @@ import NetInfo from "@react-native-community/netinfo";
 
 import { AppContext } from "../../context/AppContext";
 import {
-  initDatabase,
-  guardarProfesor,
-  obtenerProfesor,
-} from "../../database/sqlite";
-
-const BASE_URL = "https://profesores-node-ueas.onrender.com";
+  crearProfesorService,
+  actualizarProfesorService,
+} from "../../services/sincronizacion";
 
 export default function ProfesoresForm() {
   const router = useRouter();
@@ -71,9 +68,12 @@ export default function ProfesoresForm() {
       maestria: selectedProfesor.formacion?.maestria || "",
       universidad_maestria:
         selectedProfesor.formacion?.universidad_maestria || "",
-      exp_sena: selectedProfesor.experiencia?.sena || "",
-      exp_docencia:
-        selectedProfesor.experiencia?.docencia_universitaria || "",
+      exp_sena: Array.isArray(selectedProfesor.experiencia)
+        ? selectedProfesor.experiencia[0]?.sena || ""
+        : selectedProfesor.experiencia?.sena || "",
+      exp_docencia: Array.isArray(selectedProfesor.experiencia)
+        ? selectedProfesor.experiencia[0]?.docencia_universitaria || ""
+        : selectedProfesor.experiencia?.docencia_universitaria || "",
       cargos: Array.isArray(selectedProfesor.cargos)
         ? selectedProfesor.cargos.join(", ")
         : "",
@@ -175,45 +175,31 @@ export default function ProfesoresForm() {
     };
 
     try {
-      // Guardar primero en SQLite para permitir trabajar sin internet.
-      await initDatabase();
-
-      const profesorGuardado = await guardarProfesor(payload);
-
-      // Comprobar conexión antes de intentar enviar al servidor.
-      const network = await NetInfo.fetch();
-
-      let mensaje =
-        "El profesor se guardó en el dispositivo. La sincronización con el servidor está pendiente.";
-
-      if (
-        network.isConnected &&
-        network.isInternetReachable !== false
-      ) {
-        try {
-          // En esta versión, los cambios quedan guardados localmente.
-          // La sincronización automática debe procesar las operaciones pendientes.
-          const response = await fetch(`${BASE_URL}/health`);
-
-          if (response.ok) {
-            mensaje =
-              "El profesor se guardó localmente. La conexión está disponible; la sincronización de cambios aún está pendiente de implementar.";
-          }
-        } catch {
-          // SQLite conserva el registro aunque el servidor no responda.
-        }
+      let resultado;
+      if (isEditing && profesorId) {
+        resultado = await actualizarProfesorService(String(profesorId), payload);
+      } else {
+        resultado = await crearProfesorService(payload);
       }
 
-      Alert.alert("Guardado", mensaje, [
-        {
-          text: "OK",
-          onPress: () => {
-            setSelectedProfesor(profesorGuardado);
-            setSelectedProfesor(null);
-            router.replace("/(tabs)/profesores");
+      const mensaje =
+        resultado.isOnline && resultado.sincronizado
+          ? "El profesor se guardó y sincronizó exitosamente con el microservicio en internet."
+          : "Sin conexión a internet disponible. El profesor se guardó localmente en SQLite y se sincronizará automáticamente cuando vuelva la conexión.";
+
+      Alert.alert(
+        resultado.isOnline ? "Guardado en línea" : "Guardado localmente (Offline)",
+        mensaje,
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              setSelectedProfesor(null);
+              router.replace("/(tabs)/profesores");
+            },
           },
-        },
-      ]);
+        ]
+      );
     } catch (err: any) {
       Alert.alert(
         "Error",

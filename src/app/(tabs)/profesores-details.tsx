@@ -14,7 +14,7 @@ import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
-import { eliminarProfesor } from "../../database/sqlite";
+import { eliminarProfesorService } from "../../services/sincronizacion";
 
 export default function ProfesoresDetails() {
   const { selectedProfesor: p, setSelectedProfesor } =
@@ -62,13 +62,15 @@ export default function ProfesoresDetails() {
                 throw new Error("El profesor no tiene un ID válido.");
               }
 
-              await eliminarProfesor(id);
+              const res = await eliminarProfesorService(String(id));
 
               setSelectedProfesor(null);
 
               Alert.alert(
-                "Eliminación guardada",
-                "El profesor se eliminó del dispositivo. La eliminación del servidor queda pendiente de sincronización."
+                res.isOnline ? "Profesor eliminado" : "Eliminado localmente (Offline)",
+                res.isOnline && res.sincronizado
+                  ? "El profesor fue eliminado exitosamente del microservicio y de la base local."
+                  : "Sin conexión. El profesor se eliminó localmente y se eliminará del servidor cuando vuelva el internet."
               );
 
               router.replace("/(tabs)/profesores");
@@ -222,10 +224,21 @@ export default function ProfesoresDetails() {
 
         <BlurView intensity={20} tint="dark" style={styles.glassCard}>
           <Section title="Experiencia" />
-          <Row label="SENA" value={p.experiencia?.sena} />
+          <Row
+            label="SENA"
+            value={
+              Array.isArray(p.experiencia)
+                ? p.experiencia[0]?.sena ?? "—"
+                : p.experiencia?.sena
+            }
+          />
           <Row
             label="Docencia universitaria"
-            value={p.experiencia?.docencia_universitaria}
+            value={
+              Array.isArray(p.experiencia)
+                ? p.experiencia[0]?.docencia_universitaria ?? "—"
+                : p.experiencia?.docencia_universitaria
+            }
           />
         </BlurView>
 
