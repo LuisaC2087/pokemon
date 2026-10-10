@@ -12,8 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-      "@supabase/supabase-js": "^2.0.0",
-      "swagger-jsdoc": "..."
+    "@supabase/supabase-js": "^2.117.3",
+    "swagger-jsdoc": "^6.3.0"
   }
 }
-
