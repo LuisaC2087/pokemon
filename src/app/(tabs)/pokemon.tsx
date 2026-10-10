@@ -1,6 +1,8 @@
 import { useEffect, useState, useContext, useCallback } from "react";
 import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
 
 const BASE_URL = "https://pokemon-node-ueas.onrender.com";
@@ -17,7 +19,6 @@ export default function Pokemon() {
   const router = useRouter();
   const { setSelectedPokemon } = useContext(AppContext);
 
-  // GET /health
   useEffect(() => {
     fetch(`${BASE_URL}/health`)
       .then((res) => res.json())
@@ -25,7 +26,6 @@ export default function Pokemon() {
       .catch(() => setServiceStatus("error"));
   }, []);
 
-  // GET /pokemons (initial load)
   useEffect(() => {
     setLoading(true);
     fetch(`${BASE_URL}/pokemons`)
@@ -38,7 +38,6 @@ export default function Pokemon() {
       .finally(() => setLoading(false));
   }, []);
 
-  // GET /pokemons/search/:name
   const handleSearch = useCallback((text: string) => {
     setSearch(text);
     setSelectedType("Todos");
@@ -61,7 +60,6 @@ export default function Pokemon() {
     }
   }, []);
 
-  // GET /pokemons/type/:type
   const handleTypeFilter = useCallback((type: string) => {
     setSelectedType(type);
     setSearch("");
@@ -81,7 +79,6 @@ export default function Pokemon() {
     }
   }, []);
 
-  // GET /pokemons/:id (on card press)
   const handlePress = (poke: any) => {
     setLoading(true);
     fetch(`${BASE_URL}/pokemons/${poke.id}`)
@@ -98,7 +95,7 @@ export default function Pokemon() {
   };
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#7f0000', '#3b0000', '#1a0000']} style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Pokémon</Text>
         <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
@@ -107,135 +104,111 @@ export default function Pokemon() {
       <TextInput
         style={styles.input}
         placeholder="Buscar Pokémon..."
-        placeholderTextColor="#888"
+        placeholderTextColor="#aaa"
         value={search}
         onChangeText={handleSearch}
       />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-        {TYPES.map((type) => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.filterChip, selectedType === type && styles.filterChipActive]}
-            onPress={() => handleTypeFilter(type)}
-          >
-            <Text style={[styles.filterText, selectedType === type && styles.filterTextActive]}>
-              {type}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ alignItems: 'center' }}>
+          {TYPES.map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.filterChip, selectedType === type && styles.filterChipActive]}
+              onPress={() => handleTypeFilter(type)}
+            >
+              <Text style={[styles.filterText, selectedType === type && styles.filterTextActive]}>
+                {type}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
-      {loading && <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 20 }} />}
+      {loading && <ActivityIndicator color="#ff5252" size="large" style={{ marginVertical: 20 }} />}
 
-      <ScrollView>
+      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
         {pokemons.map((poke: any) => (
-          <TouchableOpacity key={poke.id} style={styles.card} onPress={() => handlePress(poke)}>
-            <Image source={{ uri: poke.image_url }} style={styles.image} />
-            <View style={styles.cardInfo}>
-              <Text style={styles.name}>{poke.name}</Text>
-              <Text style={styles.type}>{poke.type}</Text>
-            </View>
+          <TouchableOpacity key={poke.id} onPress={() => handlePress(poke)}>
+            <BlurView intensity={20} tint="dark" style={styles.glassCard}>
+              <Image source={{ uri: poke.image_url }} style={styles.image} />
+              <View style={styles.cardInfo}>
+                <Text style={styles.name}>{poke.name}</Text>
+                <Text style={styles.type}>{poke.type}</Text>
+              </View>
+            </BlurView>
           </TouchableOpacity>
         ))}
         {!loading && pokemons.length === 0 && (
           <Text style={styles.empty}>No se encontraron Pokémon</Text>
         )}
       </ScrollView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1e1e1e",
-    padding: 20,
-    paddingTop: 50,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    gap: 10,
-  },
-  header: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
+  container: { flex: 1, padding: 20, paddingTop: 50 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 10 },
+  header: { color: "#fff", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
+  statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
   input: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     fontSize: 16,
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  filterContainer: {
+    height: 55, // Fixed height container to prevent cut off
+    marginBottom: 10,
   },
   filterRow: {
-    maxHeight: 45,
-    marginBottom: 15,
+    flex: 1,
   },
   filterChip: {
-    backgroundColor: "#333",
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
-    height: 36,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   filterChipActive: {
-    backgroundColor: "#E3350D",
+    backgroundColor: "rgba(227, 53, 13, 0.8)",
+    borderColor: "#E3350D",
   },
   filterText: {
-    color: "#aaa",
-    fontSize: 13,
+    color: "#ccc",
+    fontSize: 14,
     fontWeight: "bold",
   },
   filterTextActive: {
     color: "#fff",
+    textShadowColor: 'rgba(0,0,0,0.3)', 
+    textShadowOffset: {width: 1, height: 1}, 
+    textShadowRadius: 2
   },
-  error: {
-    color: "red",
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: "#2a2a2a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  error: { color: "#ff6b6b", textAlign: "center", marginBottom: 10 },
+  glassCard: {
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
     flexDirection: "row",
     alignItems: "center",
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
-  cardInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  image: {
-    width: 80,
-    height: 80,
-  },
-  name: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  type: {
-    color: "#aaa",
-    fontSize: 14,
-    marginTop: 4,
-  },
-  empty: {
-    color: "#666",
-    textAlign: "center",
-    marginTop: 30,
-    fontSize: 16,
-  },
+  cardInfo: { flex: 1, marginLeft: 15 },
+  image: { width: 80, height: 80, resizeMode: "contain" },
+  name: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  type: { color: "#ff8a80", fontSize: 14, marginTop: 4, fontWeight: "600" },
+  empty: { color: "#ff8a80", textAlign: "center", marginTop: 30, fontSize: 16 },
 });

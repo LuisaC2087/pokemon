@@ -1,5 +1,7 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { StyleSheet, View } from "react-native";
 
 export default function TabsLayout() {
   return (
@@ -8,18 +10,27 @@ export default function TabsLayout() {
         headerShown: false,
 
         tabBarStyle: {
+          position: 'absolute',
           height: 65,
           paddingBottom: 8,
           paddingTop: 5,
-          backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
-          borderTopColor: "#DDDDDD",
+          borderTopColor: "rgba(255,255,255,0.1)",
+          elevation: 0,
+          backgroundColor: 'transparent',
         },
+        tabBarBackground: () => (
+          <View style={StyleSheet.absoluteFill}>
+            <BlurView tint="dark" intensity={90} style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+          </View>
+        ),
 
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "bold",
         },
+        tabBarInactiveTintColor: "rgba(255,255,255,0.5)",
       }}
     >
 
@@ -27,7 +38,7 @@ export default function TabsLayout() {
         name="pokemon"
         options={{
           title: "Pokémon",
-          tabBarActiveTintColor: "#E3350D",
+          tabBarActiveTintColor: "#ff5252",
 
           tabBarIcon: ({ color, size }) => (
             <Ionicons
@@ -42,11 +53,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="pokemon-details"
         options={{
+          href: null,
           title: "Datos",
-          tabBarActiveTintColor: "#3B4CCA",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text" size={size} color={color} />
-          ),
         }}
       />
 
@@ -54,7 +62,7 @@ export default function TabsLayout() {
         name="jujutsu"
         options={{
           title: "JJS",
-          tabBarActiveTintColor: "#9C27B0",
+          tabBarActiveTintColor: "#e040fb",
 
           tabBarIcon: ({ color, size }) => (
             <Ionicons
@@ -69,11 +77,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="jujutsu-details"
         options={{
+          href: null,
           title: "Detalles",
-          tabBarActiveTintColor: "#D32F2F",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flash" size={size} color={color} />
-          ),
         }}
       />
 
@@ -81,7 +86,7 @@ export default function TabsLayout() {
         name="profesores"
         options={{
           title: "Profes",
-          tabBarActiveTintColor: "#2E7D32",
+          tabBarActiveTintColor: "#64ffda",
 
           tabBarIcon: ({ color, size }) => (
             <Ionicons
@@ -95,6 +100,11 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="profesores-details"
+        options={{ href: null }}
+      />
+      
+      <Tabs.Screen
+        name="profesores-form"
         options={{ href: null }}
       />
 

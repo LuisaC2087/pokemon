@@ -1,6 +1,8 @@
 import { useRouter } from "expo-router";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
 
 const BASE_URL = "https://anime-python-ueas.onrender.com";
@@ -18,7 +20,6 @@ export default function Anime() {
   const router = useRouter();
   const { setSelectedJujutsu } = useContext(AppContext);
 
-  // GET /health
   useEffect(() => {
     fetch(`${BASE_URL}/health`)
       .then((res) => res.json())
@@ -26,7 +27,6 @@ export default function Anime() {
       .catch(() => setServiceStatus("error"));
   }, []);
 
-  // GET /characters (initial load)
   useEffect(() => {
     loadAll();
   }, []);
@@ -44,7 +44,6 @@ export default function Anime() {
       .finally(() => setLoading(false));
   };
 
-  // GET /characters/search/{name}
   const handleSearch = useCallback((text: string) => {
     setSearch(text);
     setSelectedGrade("Todos");
@@ -63,7 +62,6 @@ export default function Anime() {
     }
   }, []);
 
-  // GET /characters/grade/{grade}
   const handleGradeFilter = useCallback((grade: string) => {
     setSelectedGrade(grade);
     setSearch("");
@@ -80,7 +78,6 @@ export default function Anime() {
     }
   }, []);
 
-  // GET /characters/with-domain
   const handleDomainFilter = useCallback(() => {
     const newValue = !domainOnly;
     setDomainOnly(newValue);
@@ -104,7 +101,7 @@ export default function Anime() {
   };
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#4a148c', '#311b92', '#1a0033']} style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Jujutsu Kaisen</Text>
         <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
@@ -113,7 +110,7 @@ export default function Anime() {
       <TextInput
         style={styles.input}
         placeholder="Buscar personaje..."
-        placeholderTextColor="#888"
+        placeholderTextColor="#aaa"
         value={search}
         onChangeText={handleSearch}
       />
@@ -127,158 +124,116 @@ export default function Anime() {
         </Text>
       </TouchableOpacity>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-        {GRADES.map((grade) => (
-          <TouchableOpacity
-            key={grade}
-            style={[styles.filterChip, selectedGrade === grade && styles.filterChipActive]}
-            onPress={() => handleGradeFilter(grade)}
-          >
-            <Text style={[styles.filterText, selectedGrade === grade && styles.filterTextActive]}>
-              {grade}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ alignItems: 'center' }}>
+          {GRADES.map((grade) => (
+            <TouchableOpacity
+              key={grade}
+              style={[styles.filterChip, selectedGrade === grade && styles.filterChipActive]}
+              onPress={() => handleGradeFilter(grade)}
+            >
+              <Text style={[styles.filterText, selectedGrade === grade && styles.filterTextActive]}>
+                {grade}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
-      {loading && <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 20 }} />}
+      {loading && <ActivityIndicator color="#e040fb" size="large" style={{ marginVertical: 20 }} />}
 
-      <ScrollView>
+      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
         {characters.map((char: any, idx: number) => (
-          <TouchableOpacity key={idx} style={styles.card} onPress={() => handlePress(char)}>
-            <Image source={{ uri: char.image_url }} style={styles.image} />
-            <View style={styles.cardInfo}>
-              <Text style={styles.name}>{char.name}</Text>
-              <Text style={styles.grade}>{char.grade}</Text>
-              {char.domain_expansion !== "Ninguno" && (
-                <Text style={styles.domain}>⚡ {char.domain_expansion}</Text>
-              )}
-            </View>
+          <TouchableOpacity key={idx} onPress={() => handlePress(char)}>
+            <BlurView intensity={20} tint="dark" style={styles.glassCard}>
+              <Image source={{ uri: char.image_url }} style={styles.image} />
+              <View style={styles.cardInfo}>
+                <Text style={styles.name}>{char.name}</Text>
+                <Text style={styles.grade}>{char.grade}</Text>
+                {char.domain_expansion !== "Ninguno" && (
+                  <Text style={styles.domain}>⚡ {char.domain_expansion}</Text>
+                )}
+              </View>
+            </BlurView>
           </TouchableOpacity>
         ))}
         {!loading && characters.length === 0 && (
           <Text style={styles.empty}>No se encontraron personajes</Text>
         )}
       </ScrollView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1e1e1e",
-    padding: 20,
-    paddingTop: 50,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    gap: 10,
-  },
-  header: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
+  container: { flex: 1, padding: 20, paddingTop: 50 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 10 },
+  header: { color: "#fff", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
+  statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
   input: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     fontSize: 16,
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   domainBtn: {
-    backgroundColor: "#333",
-    borderRadius: 8,
-    padding: 10,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 10,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   domainBtnActive: {
-    backgroundColor: "#9C27B0",
+    backgroundColor: "rgba(156, 39, 176, 0.8)",
+    borderColor: "#9C27B0",
   },
-  domainText: {
-    color: "#aaa",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  domainTextActive: {
-    color: "#fff",
+  domainText: { color: "#ccc", fontSize: 14, fontWeight: "bold" },
+  domainTextActive: { color: "#fff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  filterContainer: {
+    height: 55, // Fixed height container to prevent cut off
+    marginBottom: 10,
   },
   filterRow: {
-    maxHeight: 45,
-    marginBottom: 15,
+    flex: 1,
   },
   filterChip: {
-    backgroundColor: "#333",
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
-    height: 36,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   filterChipActive: {
-    backgroundColor: "#9C27B0",
+    backgroundColor: "rgba(156, 39, 176, 0.8)",
+    borderColor: "#9C27B0",
   },
-  filterText: {
-    color: "#aaa",
-    fontSize: 13,
-    fontWeight: "bold",
-  },
-  filterTextActive: {
-    color: "#fff",
-  },
-  error: {
-    color: "red",
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: "#2a2a2a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  filterText: { color: "#ccc", fontSize: 14, fontWeight: "bold" },
+  filterTextActive: { color: "#fff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  error: { color: "#ff6b6b", textAlign: "center", marginBottom: 10 },
+  glassCard: {
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
     flexDirection: "row",
     alignItems: "center",
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
-  cardInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  image: {
-    width: 80,
-    height: 80,
-    resizeMode: "contain",
-  },
-  name: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  grade: {
-    color: "#aaa",
-    fontSize: 14,
-    marginTop: 4,
-  },
-  domain: {
-    color: "#CE93D8",
-    fontSize: 12,
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-  empty: {
-    color: "#666",
-    textAlign: "center",
-    marginTop: 30,
-    fontSize: 16,
-  },
+  cardInfo: { flex: 1, marginLeft: 15 },
+  image: { width: 80, height: 80, resizeMode: "contain" },
+  name: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  grade: { color: "#e040fb", fontSize: 14, marginTop: 4, fontWeight: "600" },
+  domain: { color: "#fff", fontSize: 12, marginTop: 4, fontStyle: "italic", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  empty: { color: "#e040fb", textAlign: "center", marginTop: 30, fontSize: 16 },
 });

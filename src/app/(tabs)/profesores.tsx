@@ -1,6 +1,8 @@
 import { useEffect, useState, useContext, useCallback } from "react";
 import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
 
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
@@ -33,22 +35,12 @@ export default function Profesores() {
     fetchProfesores();
   }, [fetchProfesores]);
 
-  const handleSearch = () => {
-    fetchProfesores(search);
-  };
-
-  const handlePress = (prof: any) => {
-    setSelectedProfesor(prof);
-    router.push("/(tabs)/profesores-details");
-  };
-
-  const handleCreate = () => {
-    setSelectedProfesor(null);
-    router.push("/(tabs)/profesores-form");
-  };
+  const handleSearch = () => fetchProfesores(search);
+  const handlePress = (prof: any) => { setSelectedProfesor(prof); router.push("/(tabs)/profesores-details"); };
+  const handleCreate = () => { setSelectedProfesor(null); router.push("/(tabs)/profesores-form"); };
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#1a2a6c', '#112240', '#0a192f']} style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Profesores</Text>
       </View>
@@ -57,7 +49,7 @@ export default function Profesores() {
         <TextInput
           style={styles.input}
           placeholder="Buscar Profesor..."
-          placeholderTextColor="#888"
+          placeholderTextColor="#aaa"
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={handleSearch}
@@ -72,11 +64,11 @@ export default function Profesores() {
       </TouchableOpacity>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
-      {loading && <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 20 }} />}
+      {loading && <ActivityIndicator color="#64ffda" size="large" style={{ marginVertical: 20 }} />}
 
-      <ScrollView>
+      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
         {profesores.map((prof: any) => (
-          <View key={prof._id || prof.nombre} style={styles.card}>
+          <BlurView intensity={20} tint="dark" key={prof._id || prof.nombre} style={styles.glassCard}>
             <Image 
               source={{ uri: prof.image_url || prof.imagen_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.nombre)}&background=random&color=fff&size=150` }} 
               style={styles.image} 
@@ -89,123 +81,76 @@ export default function Profesores() {
                 <Text style={styles.moreButtonText}>Ver / Editar</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </BlurView>
         ))}
         {!loading && profesores.length === 0 && (
           <Text style={styles.empty}>No se encontraron Profesores</Text>
         )}
       </ScrollView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1e1e1e",
-    padding: 20,
-    paddingTop: 50,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  header: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  searchContainer: {
-    flexDirection: "row",
-    marginBottom: 10,
-    gap: 10,
-  },
+  container: { flex: 1, padding: 20, paddingTop: 50 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20 },
+  header: { color: "#fff", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
+  searchContainer: { flexDirection: "row", marginBottom: 15, gap: 10 },
   input: {
     flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
     padding: 12,
     fontSize: 16,
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   searchButton: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: "rgba(100, 255, 218, 0.2)",
     justifyContent: "center",
     paddingHorizontal: 15,
-    borderRadius: 8,
-  },
-  searchButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  createButton: {
-    backgroundColor: "#0277bd",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  createButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  error: {
-    color: "red",
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: "#2a2a2a",
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(100, 255, 218, 0.5)",
+  },
+  searchButtonText: { color: "#64ffda", fontWeight: "bold" },
+  createButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  createButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  error: { color: "#ff6b6b", textAlign: "center", marginBottom: 10 },
+  glassCard: {
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
     flexDirection: "row",
     alignItems: "center",
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
-  cardInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  image: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  name: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  location: {
-    color: "#4CAF50",
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  summary: {
-    color: "#aaa",
-    fontSize: 14,
-    marginTop: 4,
-    marginBottom: 10,
-  },
+  cardInfo: { flex: 1, marginLeft: 15 },
+  image: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)" },
+  name: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+  location: { color: "#64ffda", fontSize: 12, marginTop: 4, marginBottom: 8 },
+  summary: { color: "#ccd6f6", fontSize: 14, marginTop: 4, marginBottom: 10 },
   moreButton: {
-    backgroundColor: "#444",
+    backgroundColor: "rgba(255,255,255,0.1)",
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 6,
+    borderRadius: 8,
     alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  moreButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  empty: {
-    color: "#666",
-    textAlign: "center",
-    marginTop: 30,
-    fontSize: 16,
-  },
+  moreButtonText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
+  empty: { color: "#8892b0", textAlign: "center", marginTop: 30, fontSize: 16 },
 });
