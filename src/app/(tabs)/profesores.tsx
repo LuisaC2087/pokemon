@@ -1,121 +1,55 @@
-import { useState, useContext, useCallback, useEffect } from "react";
+import { useEffect, useState, useContext, useCallback } from "react";
 import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
+  Image, ScrollView, StyleSheet, Text, View, TextInput,
+  TouchableOpacity, ActivityIndicator, Animated,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { AppContext, type SyncInterval } from "../../context/AppContext";
 
-import { AppContext } from "../../context/AppContext";
-import {
-  consultarProfesores,
-  sincronizarPendientes,
-  suscribirSincronizacionAutomatica,
-  hayConexion,
-} from "../../services/sincronizacion";
-import { contarPendientes } from "../../database/sqlite";
-import { notificar } from "../../utils/alert";
+const INTERVALS: { label: string; value: SyncInterval }[] = [
+  { label: "2 s", value: 2 },
+  { label: "10 s", value: 10 },
+  { label: "30 s", value: 30 },
+];
 
 export default function Profesores() {
-  const [profesores, setProfesores] = useState<any[]>([]);
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [pendientesCount, setPendientesCount] = useState(0);
-  const [infoMensaje, setInfoMensaje] = useState("");
-
   const router = useRouter();
-  const { setSelectedProfesor } = useContext(AppContext);
+  const {
+    setSelectedProfesor,
+    syncInterval,
+    setSyncInterval,
+    syncState,
+    localProfesores,
+    triggerSync,
+    markAllProfesoresSeen,
+  } = useContext(AppContext);
 
-  const actualizarEstadoConexion = useCallback(async () => {
-    const conectado = await hayConexion();
-    setIsOnline(conectado);
-    const pendientes = await contarPendientes();
-    setPendientesCount(pendientes);
-    return conectado;
-  }, []);
+  const [search, setSearch] = useState("");
+  const [pulseAnim] = useState(new Animated.Value(1));
 
-  const fetchProfesores = useCallback(
-    async (searchTerm = "", isPullRefresh = false) => {
-      if (!isPullRefresh) {
-        setLoading(true);
-      }
-      setError("");
-
-      try {
-        const resultado = await consultarProfesores(searchTerm);
-        setProfesores(resultado.profesores);
-        setIsOnline(resultado.isOnline);
-
-        const pendientes = await contarPendientes();
-        setPendientesCount(pendientes);
-
-        if (resultado.sincronizados > 0) {
-          setInfoMensaje(
-            `Se sincronizaron ${resultado.sincronizados} cambios con el microservicio.`
-          );
-          setTimeout(() => setInfoMensaje(""), 4000);
-        }
-      } catch (err) {
-        console.error("Error al cargar profesores:", err);
-        setError("Error al cargar profesores. Se muestran los datos locales.");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    []
-  );
-
-  // Escuchar cuando la pantalla gana foco
-  useFocusEffect(
-    useCallback(() => {
-      actualizarEstadoConexion();
-      fetchProfesores(search);
-    }, [actualizarEstadoConexion, fetchProfesores, search])
-  );
-
-  // Suscribirse a cambios en la conectividad para sincronizar en tiempo real cuando vuelva internet
+  // Pulso animado en el indicador de nuevos
   useEffect(() => {
-    const unsubscribe = suscribirSincronizacionAutomatica(async (resultado) => {
-      if (resultado.totalSincronizados > 0) {
-        setInfoMensaje(
-          `¡Internet restablecido! Sincronizados ${resultado.totalSincronizados} cambios automáticamente.`
-        );
-        setTimeout(() => setInfoMensaje(""), 5000);
-        actualizarEstadoConexion();
-        fetchProfesores(search);
-      }
-    });
+    if (syncState.newCount > 0) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
+    }
+  }, [syncState.newCount]);
 
-    return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
-    };
-  }, [actualizarEstadoConexion, fetchProfesores, search]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await actualizarEstadoConexion();
-    await fetchProfesores(search, true);
-  };
-
-  const handleSearch = () => {
-    fetchProfesores(search);
-  };
+  const filteredProfesores = search.trim()
+    ? localProfesores.filter((p) =>
+        p.nombre.toLowerCase().includes(search.toLowerCase()) ||
+        p.departamento.toLowerCase().includes(search.toLowerCase())
+      )
+    : localProfesores;
 
   const handlePress = (prof: any) => {
     setSelectedProfesor(prof);
@@ -127,205 +61,130 @@ export default function Profesores() {
     router.push("/(tabs)/profesores-form");
   };
 
-  const handleSyncManual = async () => {
-    const online = await hayConexion();
-    if (!online) {
-      notificar(
-        "Sin conexión",
-        "No hay conexión a internet disponible para sincronizar con el microservicio en este momento."
-      );
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const res = await sincronizarPendientes();
-      await fetchProfesores(search);
-      const pendientes = await contarPendientes();
-      setPendientesCount(pendientes);
-
-      if (res.totalSincronizados > 0) {
-        notificar(
-          "Sincronización exitosa",
-          `Se sincronizaron ${res.totalSincronizados} operaciones pendientes con el microservicio.`
-        );
-      } else {
-        notificar(
-          "Al día",
-          "Todos los registros ya se encuentran sincronizados con el microservicio."
-        );
-      }
-    } catch (err: any) {
-      notificar(
-        "Error de sincronización",
-        err?.message || "No se pudo sincronizar en este momento."
-      );
-    } finally {
-      setSyncing(false);
-    }
+  const formatSyncTime = () => {
+    if (!syncState.lastSyncAt) return "Nunca";
+    const d = syncState.lastSyncAt;
+    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
   };
 
   return (
-    <LinearGradient
-      colors={["#1a2a6c", "#112240", "#0a192f"]}
-      style={styles.container}
-    >
+    <LinearGradient colors={["#1a2a6c", "#112240", "#0a192f"]} style={styles.container}>
+
+      {/* ── HEADER ──────────────────────────────── */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Profesores</Text>
-      </View>
-
-      {/* Barra de estado de conexión y sincronización */}
-      <View style={styles.statusRow}>
-        <View
-          style={[
-            styles.statusBadge,
-            isOnline ? styles.onlineBadge : styles.offlineBadge,
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              isOnline ? styles.onlineDot : styles.offlineDot,
-            ]}
-          />
-          <Text style={styles.statusText}>
-            {isOnline
-              ? "En línea (Microservicio)"
-              : "Sin conexión (SQLite local)"}
-          </Text>
-        </View>
-
-        {pendientesCount > 0 && (
-          <TouchableOpacity
-            style={styles.syncButton}
-            onPress={handleSyncManual}
-            disabled={syncing}
-          >
-            {syncing ? (
-              <ActivityIndicator size="small" color="#64ffda" />
-            ) : (
-              <Text style={styles.syncButtonText}>
-                🔄 Sincronizar ({pendientesCount})
-              </Text>
-            )}
-          </TouchableOpacity>
+        {syncState.newCount > 0 && (
+          <Animated.View style={[styles.newBadgeGlobal, { transform: [{ scale: pulseAnim }] }]}>
+            <Text style={styles.newBadgeGlobalText}>+{syncState.newCount} nuevos</Text>
+          </Animated.View>
         )}
       </View>
 
-      {infoMensaje !== "" && (
-        <View style={styles.infoBanner}>
-          <Text style={styles.infoText}>{infoMensaje}</Text>
+      {/* ── PANEL DE SINCRONIZACIÓN ──────────────── */}
+      <BlurView intensity={20} tint="dark" style={styles.syncPanel}>
+        <View style={styles.syncRow}>
+          <View style={styles.syncInfo}>
+            <View style={[styles.syncDot, { backgroundColor: syncState.isSyncing ? "#f9ca24" : syncState.error ? "#ff6b6b" : "#64ffda" }]} />
+            <Text style={styles.syncLabel}>
+              {syncState.isSyncing
+                ? "Sincronizando…"
+                : syncState.error
+                ? "Error sync"
+                : `Sync: ${formatSyncTime()}`}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.syncBtn} onPress={triggerSync} disabled={syncState.isSyncing}>
+            {syncState.isSyncing
+              ? <ActivityIndicator size="small" color="#64ffda" />
+              : <Text style={styles.syncBtnText}>↻</Text>}
+          </TouchableOpacity>
         </View>
-      )}
 
+        {/* Selector de intervalo */}
+        <View style={styles.intervalRow}>
+          <Text style={styles.intervalLabel}>Intervalo:</Text>
+          {INTERVALS.map((item) => (
+            <TouchableOpacity
+              key={item.value}
+              style={[styles.intervalChip, syncInterval === item.value && styles.intervalChipActive]}
+              onPress={() => setSyncInterval(item.value)}
+            >
+              <Text style={[styles.intervalChipText, syncInterval === item.value && styles.intervalChipTextActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Info totales */}
+        <View style={styles.statsRow}>
+          <Text style={styles.statText}>Local: {syncState.totalLocal} registros</Text>
+          {syncState.newCount > 0 && (
+            <TouchableOpacity onPress={markAllProfesoresSeen}>
+              <Text style={styles.markSeenText}>Marcar todos vistos ✓</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {syncState.error ? <Text style={styles.errorText}>{syncState.error}</Text> : null}
+      </BlurView>
+
+      {/* ── BÚSQUEDA ────────────────────────────── */}
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.input}
-          placeholder="Buscar Profesor..."
+          placeholder="Buscar profesor..."
           placeholderTextColor="#aaa"
           value={search}
           onChangeText={setSearch}
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
         />
-
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-          <Text style={styles.searchButtonText}>Buscar</Text>
-        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
         <Text style={styles.createButtonText}>+ Agregar Profesor</Text>
       </TouchableOpacity>
 
-      {error !== "" && <Text style={styles.error}>{error}</Text>}
-
-      {loading && !refreshing && (
-        <ActivityIndicator
-          color="#64ffda"
-          size="large"
-          style={{ marginVertical: 20 }}
-        />
-      )}
-
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 30 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#64ffda"
-            colors={["#64ffda"]}
-          />
-        }
-      >
-        {profesores.map((prof: any) => {
-          const estaSincronizado =
-            prof.sincronizado === undefined || Number(prof.sincronizado) === 1;
-
-          return (
-            <BlurView
-              intensity={20}
-              tint="dark"
-              key={prof.id || prof.nombre}
-              style={styles.glassCard}
-            >
-              <Image
-                source={{
-                  uri:
-                    prof.image_url ||
-                    prof.imagen_url ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      prof.nombre || "Profesor"
-                    )}&background=random&color=fff&size=150`,
-                }}
-                style={styles.image}
-              />
-
-              <View style={styles.cardInfo}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {prof.nombre}
-                  </Text>
-                  <View
-                    style={[
-                      styles.cardSyncBadge,
-                      estaSincronizado
-                        ? styles.cardSyncOk
-                        : styles.cardSyncPending,
-                    ]}
-                  >
-                    <Text style={styles.cardSyncText}>
-                      {estaSincronizado ? "☁️ Sincronizado" : "⏳ Pendiente"}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.dept}>
-                  {prof.departamento || "Sin departamento"}
-                </Text>
-
-                <Text style={styles.summary} numberOfLines={1}>
-                  {prof.profesion || "Sin profesión"}
-                </Text>
-
-                <Text style={styles.location}>
-                  {prof.ubicacion || "Sin ubicación"}
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.moreButton}
-                  onPress={() => handlePress(prof)}
-                >
-                  <Text style={styles.moreButtonText}>Ver / Editar</Text>
-                </TouchableOpacity>
+      {/* ── LISTA ───────────────────────────────── */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+        {filteredProfesores.map((prof) => (
+          <BlurView
+            intensity={20}
+            tint="dark"
+            key={prof.id}
+            style={[styles.glassCard, prof.is_new === 1 && styles.glassCardNew]}
+          >
+            {/* Badge NUEVO */}
+            {prof.is_new === 1 && (
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>NUEVO</Text>
               </View>
-            </BlurView>
-          );
-        })}
+            )}
 
-        {!loading && profesores.length === 0 && (
-          <Text style={styles.empty}>No se encontraron profesores</Text>
+            <Image
+              source={{
+                uri: prof.imagen_url ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.nombre)}&background=random&color=fff&size=150`,
+              }}
+              style={styles.image}
+            />
+            <View style={styles.cardInfo}>
+              <Text style={styles.name}>{prof.nombre}</Text>
+              <Text style={styles.summary} numberOfLines={1}>{prof.profesion || "Sin profesión"}</Text>
+              <Text style={styles.location}>{prof.departamento || "Sin departamento"}</Text>
+              {prof.email ? <Text style={styles.email}>{prof.email}</Text> : null}
+              <TouchableOpacity style={styles.moreButton} onPress={() => handlePress(prof)}>
+                <Text style={styles.moreButtonText}>Ver / Editar</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        ))}
+
+        {filteredProfesores.length === 0 && (
+          <Text style={styles.empty}>
+            {localProfesores.length === 0
+              ? "Sin datos locales. Sincronizando..."
+              : "No se encontraron profesores"}
+          </Text>
         )}
       </ScrollView>
     </LinearGradient>
@@ -333,224 +192,101 @@ export default function Profesores() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    paddingTop: 50,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  header: {
-    color: "#fff",
-    fontSize: 32,
-    fontWeight: "bold",
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 15,
-    gap: 10,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  onlineBadge: {
-    backgroundColor: "rgba(46, 204, 113, 0.15)",
-    borderColor: "rgba(46, 204, 113, 0.4)",
-  },
-  offlineBadge: {
-    backgroundColor: "rgba(243, 156, 18, 0.15)",
-    borderColor: "rgba(243, 156, 18, 0.4)",
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  onlineDot: {
-    backgroundColor: "#2ecc71",
-  },
-  offlineDot: {
-    backgroundColor: "#f39c12",
-  },
-  statusText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  syncButton: {
-    backgroundColor: "rgba(100,255,218,0.2)",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#64ffda",
-  },
-  syncButtonText: {
-    color: "#64ffda",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  infoBanner: {
-    backgroundColor: "rgba(100, 255, 218, 0.15)",
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(100, 255, 218, 0.3)",
-  },
-  infoText: {
-    color: "#64ffda",
-    fontSize: 13,
-    textAlign: "center",
-    fontWeight: "600",
-  },
-  searchContainer: {
-    flexDirection: "row",
-    marginBottom: 15,
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 12,
+  container: { flex: 1, padding: 16, paddingTop: 50 },
+
+  // Header
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 12, gap: 10 },
+  header: { color: "#fff", fontSize: 30, fontWeight: "bold", textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
+  newBadgeGlobal: { backgroundColor: "#ff6b6b", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
+  newBadgeGlobalText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
+
+  // Sync panel
+  syncPanel: {
+    borderRadius: 14,
     padding: 12,
-    fontSize: 16,
-    color: "#fff",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
-  },
-  searchButton: {
-    backgroundColor: "rgba(100,255,218,0.2)",
-    justifyContent: "center",
-    paddingHorizontal: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(100,255,218,0.5)",
-  },
-  searchButtonText: {
-    color: "#64ffda",
-    fontWeight: "bold",
-  },
-  createButton: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    padding: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
-  },
-  createButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  error: {
-    color: "#ff6b6b",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  glassCard: {
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 15,
-    flexDirection: "row",
-    alignItems: "center",
+    marginBottom: 14,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(100,255,218,0.25)",
     backgroundColor: "rgba(0,0,0,0.2)",
   },
-  cardInfo: {
-    flex: 1,
-    marginLeft: 15,
+  syncRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  syncInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
+  syncDot: { width: 10, height: 10, borderRadius: 5 },
+  syncLabel: { color: "#ccd6f6", fontSize: 13 },
+  syncBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(100,255,218,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(100,255,218,0.4)" },
+  syncBtnText: { color: "#64ffda", fontSize: 20, fontWeight: "bold" },
+
+  intervalRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  intervalLabel: { color: "#8892b0", fontSize: 12 },
+  intervalChip: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+  intervalChipActive: { backgroundColor: "rgba(100,255,218,0.2)", borderColor: "#64ffda" },
+  intervalChipText: { color: "#8892b0", fontSize: 12, fontWeight: "600" },
+  intervalChipTextActive: { color: "#64ffda" },
+
+  statsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  statText: { color: "#8892b0", fontSize: 11 },
+  markSeenText: { color: "#64ffda", fontSize: 11, fontWeight: "bold" },
+  errorText: { color: "#ff6b6b", fontSize: 12, marginTop: 4 },
+
+  // Search
+  searchContainer: { marginBottom: 10 },
+  input: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12, padding: 12,
+    fontSize: 15, color: "#fff",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.25)",
   },
-  cardSyncBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+
+  // Buttons
+  createButton: {
+    backgroundColor: "rgba(100,255,218,0.1)",
+    padding: 12, borderRadius: 12,
+    alignItems: "center", marginBottom: 16,
+    borderWidth: 1, borderColor: "rgba(100,255,218,0.3)",
   },
-  cardSyncOk: {
-    backgroundColor: "rgba(46, 204, 113, 0.2)",
+  createButtonText: { color: "#64ffda", fontWeight: "bold", fontSize: 15 },
+
+  // Cards
+  glassCard: {
+    borderRadius: 15, padding: 14, marginBottom: 12,
+    flexDirection: "row", alignItems: "center",
+    overflow: "hidden", borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
-  cardSyncPending: {
-    backgroundColor: "rgba(243, 156, 18, 0.25)",
+  glassCardNew: {
+    borderColor: "rgba(100,255,218,0.5)",
+    backgroundColor: "rgba(100,255,218,0.06)",
   },
-  cardSyncText: {
-    fontSize: 10,
-    fontWeight: "bold",
-    color: "#fff",
+
+  // NUEVO badge
+  newBadge: {
+    position: "absolute", top: 10, right: 10,
+    backgroundColor: "#ff6b6b",
+    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
+    zIndex: 10,
   },
-  image: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  name: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    flex: 1,
-  },
-  dept: {
-    color: "#64ffda",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  location: {
-    color: "#8892b0",
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  summary: {
-    color: "#ccd6f6",
-    fontSize: 13,
-    marginTop: 2,
-  },
+  newBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold", letterSpacing: 0.5 },
+
+  cardInfo: { flex: 1, marginLeft: 12 },
+  image: { width: 72, height: 72, borderRadius: 36, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)" },
+  name: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  summary: { color: "#ccd6f6", fontSize: 13, marginTop: 3 },
+  location: { color: "#64ffda", fontSize: 12, marginTop: 2, marginBottom: 2 },
+  email: { color: "#8892b0", fontSize: 11, marginBottom: 6 },
   moreButton: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 5, paddingHorizontal: 10,
+    borderRadius: 8, alignSelf: "flex-start",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
+    marginTop: 4,
   },
-  moreButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  empty: {
-    color: "#8892b0",
-    textAlign: "center",
-    marginTop: 30,
-    fontSize: 16,
-  },
+  moreButtonText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
+  empty: { color: "#8892b0", textAlign: "center", marginTop: 40, fontSize: 15 },
 });

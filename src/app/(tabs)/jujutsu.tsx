@@ -78,51 +78,25 @@ export default function Anime() {
     }
   }, []);
 
-  const handleDomainFilter = useCallback(() => {
-    const newValue = !domainOnly;
-    setDomainOnly(newValue);
-    setSearch("");
-    setSelectedGrade("Todos");
-    setLoading(true);
-    if (newValue) {
-      fetch(`${BASE_URL}/characters/with-domain`)
-        .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setCharacters(data); else setCharacters([]); })
-        .catch(() => setCharacters([]))
-        .finally(() => setLoading(false));
-    } else {
-      loadAll();
-    }
-  }, [domainOnly]);
-
   const handlePress = (char: any) => {
     setSelectedJujutsu(char);
     router.push("/(tabs)/jujutsu-details");
   };
 
   return (
-    <LinearGradient colors={['#4a148c', '#311b92', '#1a0033']} style={styles.container}>
+    <LinearGradient colors={['#0c101d', '#131b2e', '#090d16']} style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Jujutsu Kaisen</Text>
-        <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
+        <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#10b981" : "#ef4444" }]} />
       </View>
 
       <TextInput
         style={styles.input}
         placeholder="Buscar personaje..."
-        placeholderTextColor="#aaa"
+        placeholderTextColor="#64748b"
         value={search}
         onChangeText={handleSearch}
       />
-
-      <TouchableOpacity
-        style={[styles.domainBtn, domainOnly && styles.domainBtnActive]}
-        onPress={handleDomainFilter}
-      >
-        <Text style={[styles.domainText, domainOnly && styles.domainTextActive]}>
-          Con Expansión de Dominio
-        </Text>
-      </TouchableOpacity>
 
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ alignItems: 'center' }}>
@@ -141,12 +115,12 @@ export default function Anime() {
       </View>
 
       {error !== "" && <Text style={styles.error}>{error}</Text>}
-      {loading && <ActivityIndicator color="#e040fb" size="large" style={{ marginVertical: 20 }} />}
+      {loading && <ActivityIndicator color="#818cf8" size="large" style={{ marginVertical: 20 }} />}
 
       <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
         {characters.map((char: any, idx: number) => (
           <TouchableOpacity key={idx} onPress={() => handlePress(char)}>
-            <BlurView intensity={20} tint="dark" style={styles.glassCard}>
+            <BlurView intensity={25} tint="dark" style={styles.glassCard}>
               <Image source={{ uri: char.image_url }} style={styles.image} />
               <View style={styles.cardInfo}>
                 <Text style={styles.name}>{char.name}</Text>
@@ -169,56 +143,56 @@ export default function Anime() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, paddingTop: 50 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 10 },
-  header: { color: "#fff", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
-  statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
+  header: { color: "#f8fafc", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
+  statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
   input: {
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     fontSize: 16,
-    color: "#fff",
+    color: "#f8fafc",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
   domainBtn: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
   domainBtnActive: {
-    backgroundColor: "rgba(156, 39, 176, 0.8)",
-    borderColor: "#9C27B0",
+    backgroundColor: "rgba(99, 102, 241, 0.28)",
+    borderColor: "#6366f1",
   },
-  domainText: { color: "#ccc", fontSize: 14, fontWeight: "bold" },
-  domainTextActive: { color: "#fff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  domainText: { color: "#94a3b8", fontSize: 14, fontWeight: "bold" },
+  domainTextActive: { color: "#e0e7ff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
   filterContainer: {
-    height: 55, // Fixed height container to prevent cut off
+    height: 55,
     marginBottom: 10,
   },
   filterRow: {
     flex: 1,
   },
   filterChip: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginRight: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
   filterChipActive: {
-    backgroundColor: "rgba(156, 39, 176, 0.8)",
-    borderColor: "#9C27B0",
+    backgroundColor: "rgba(99, 102, 241, 0.28)",
+    borderColor: "#6366f1",
   },
-  filterText: { color: "#ccc", fontSize: 14, fontWeight: "bold" },
-  filterTextActive: { color: "#fff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
-  error: { color: "#ff6b6b", textAlign: "center", marginBottom: 10 },
+  filterText: { color: "#94a3b8", fontSize: 14, fontWeight: "bold" },
+  filterTextActive: { color: "#e0e7ff", textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  error: { color: "#f87171", textAlign: "center", marginBottom: 10 },
   glassCard: {
     borderRadius: 15,
     padding: 15,
@@ -227,13 +201,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    backgroundColor: "rgba(0,0,0,0.2)",
+    borderColor: "rgba(129, 140, 248, 0.18)",
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
   },
   cardInfo: { flex: 1, marginLeft: 15 },
   image: { width: 80, height: 80, resizeMode: "contain" },
-  name: { color: "#fff", fontSize: 20, fontWeight: "bold" },
-  grade: { color: "#e040fb", fontSize: 14, marginTop: 4, fontWeight: "600" },
-  domain: { color: "#fff", fontSize: 12, marginTop: 4, fontStyle: "italic", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
-  empty: { color: "#e040fb", textAlign: "center", marginTop: 30, fontSize: 16 },
+  name: { color: "#f8fafc", fontSize: 20, fontWeight: "bold" },
+  grade: { color: "#a5b4fc", fontSize: 14, marginTop: 4, fontWeight: "600" },
+  domain: { color: "#cbd5e1", fontSize: 12, marginTop: 4, fontStyle: "italic", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+  empty: { color: "#94a3b8", textAlign: "center", marginTop: 30, fontSize: 16 },
 });

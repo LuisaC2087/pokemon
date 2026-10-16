@@ -1,272 +1,512 @@
-const http = require('http');
+/**
+ * Microservicio de Profesores / Docentes
+ * Arquitectura: Node.js + Express + Supabase (PostgreSQL) + Swagger OpenAPI 3.0
+ */
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
 const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsDoc = require('swagger-jsdoc');
 
-const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
+
+// ── CONFIGURACIÓN SUPABASE ──────────────────────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
 const TABLE = 'profesores';
 
-if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
-  throw new Error('Faltan SUPABASE_URL o SUPABASE_SECRET_KEY');
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
+function getSupabase() {
+  if (!supabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      const err = new Error('Variables SUPABASE_URL o SUPABASE_SECRET_KEY/SUPABASE_ANON_KEY no configuradas en el entorno');
+      err.status = 503;
+      throw err;
+    }
+    supabase = createClient(url, key);
+  }
+  return supabase;
+}
 
-/* ---------- Swagger: /docs y /openapi.json ---------- */
+// ── DOCUMENTACIÓN SWAGGER (OPENAPI 3.0) ──────────────────────
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.3',
+    info: {
+      title: 'Profesores API - Microservicio Supabase',
+      version: '2.0.0',
+      description: `
+API REST para la gestión de profesores y docentes universitarios.
+Conectada a la base de datos en la nube **Supabase (PostgreSQL)** y optimizada para sincronización con **SQLite** en dispositivos móviles.
 
-const err = d => ({ description: d, content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } });
-const ok = (d, schema) => ({ description: d, content: { 'application/json': { schema } } });
-const profesor = { $ref: '#/components/schemas/Profesor' };
-const body = { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Profesor' } } } };
-const idParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } };
-
-const openapi = {
-  openapi: '3.0.3',
-  info: { title: 'Profesores API', version: '1.0.0' },
-  paths: {
-    '/health': { get: { summary: 'Estado del servicio', responses: { 200: ok('OK', { type: 'object' }) } } },
-    '/test-supabase': { get: { summary: 'Probar conexión a Supabase', responses: { 200: ok('Conectado', { type: 'object' }), 500: err('Error') } } },
-    '/profesores': {
-      get: { summary: 'Listar profesores', responses: { 200: ok('Lista', { type: 'array', items: profesor }), 500: err('Error') } },
-      post: { summary: 'Crear profesor', requestBody: body, responses: { 201: ok('Creado', profesor), 400: err('Datos inválidos'), 409: err('ID duplicado') } }
+### Campos de cada Profesor:
+* **id**: Identificador único (UUID)
+* **nombre**: Nombre completo (Obligatorio)
+* **departamento**: Departamento académico (Obligatorio)
+* **profesion**: Título o cargo profesional
+* **email**: Correo electrónico de contacto
+* **telefono**: Número de contacto telefónico
+* **imagen_url**: Enlace a la fotografía o imagen en Base64
+* **actualizado_en**: Marca de tiempo ISO de la última modificación
+      `,
+      contact: {
+        name: 'Soporte Docente',
+      },
     },
-    '/profesores/{id}': {
-      put: { summary: 'Actualizar profesor', parameters: [idParam], requestBody: body, responses: { 200: ok('Actualizado', profesor), 400: err('Datos inválidos'), 404: err('No encontrado') } },
-      delete: { summary: 'Eliminar profesor', parameters: [idParam], responses: { 200: ok('Eliminado', { type: 'object' }), 400: err('ID inválido'), 404: err('No encontrado') } }
-    },
-    '/search/{nombre}': {
-      get: { summary: 'Buscar por nombre', parameters: [{ name: 'nombre', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: ok('Resultados', { type: 'array', items: profesor }), 400: err('Nombre vacío') } }
+    servers: [
+      {
+        url: process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000',
+        description: 'Servidor activo',
+      },
+    ],
+    tags: [
+      { name: 'Profesores', description: 'Operaciones CRUD y sincronización de docentes' },
+      { name: 'Sistema', description: 'Monitoreo de salud y conectividad' },
+    ],
+    components: {
+      schemas: {
+        Profesor: {
+          type: 'object',
+          required: ['id', 'nombre', 'departamento'],
+          properties: {
+            id: { type: 'string', format: 'uuid', example: 'd3b07384-d113-4f90-8a12-87063d89d9f1' },
+            nombre: { type: 'string', example: 'Dra. Elena Ramos' },
+            departamento: { type: 'string', example: 'Ciencias de la Computación' },
+            profesion: { type: 'string', example: 'Profesora Titular' },
+            email: { type: 'string', format: 'email', example: 'elena.ramos@universidad.edu' },
+            telefono: { type: 'string', example: '+57 301 555 1234' },
+            imagen_url: { type: 'string', example: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2' },
+            actualizado_en: { type: 'string', format: 'date-time', example: '2026-10-16T18:00:00.000Z' }
+          }
+        },
+        ProfesorInput: {
+          type: 'object',
+          required: ['nombre', 'departamento'],
+          properties: {
+            id: { type: 'string', description: 'Opcional. Si no se envía se autogenera un UUID.', example: 'd3b07384-d113-4f90-8a12-87063d89d9f1' },
+            nombre: { type: 'string', example: 'Dra. Elena Ramos' },
+            departamento: { type: 'string', example: 'Ciencias de la Computación' },
+            profesion: { type: 'string', example: 'Profesora Titular' },
+            email: { type: 'string', format: 'email', example: 'elena.ramos@universidad.edu' },
+            telefono: { type: 'string', example: '+57 301 555 1234' },
+            imagen_url: { type: 'string', example: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2' }
+          }
+        },
+        RespuestaEliminacion: {
+          type: 'object',
+          properties: {
+            mensaje: { type: 'string', example: 'Profesor eliminado exitosamente' },
+            id: { type: 'string', example: 'd3b07384-d113-4f90-8a12-87063d89d9f1' }
+          }
+        },
+        Error: {
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Mensaje descriptivo del error' },
+            codigo: { type: 'string', example: '404' }
+          }
+        }
+      }
     }
   },
-  components: {
-    schemas: {
-      Profesor: {
-        type: 'object',
-        required: ['nombre', 'departamento'],
-        additionalProperties: true,
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-          nombre: { type: 'string', example: 'María Gómez' },
-          departamento: { type: 'string', example: 'Matemáticas' }
-        }
-      },
-      Error: { type: 'object', properties: { error: { type: 'string' }, codigo: { type: 'string' } } }
-    }
-  }
+  apis: ['./index.js'],
 };
 
-const docsHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Profesores API</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"></head>
-<body><div id="ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-<script>SwaggerUIBundle({ url: '/openapi.json', dom_id: '#ui' });</script></body></html>`;
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
-/* ---------- Utilidades ---------- */
+// Servir UI en /docs y /api-docs, y JSON en /openapi.json
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.get('/openapi.json', (req, res) => res.json(swaggerDocs));
 
-const send = (res, status, data) => {
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
-  });
-  res.end(JSON.stringify(data));
-};
+// ── HELPERS DE VALIDACIÓN ───────────────────────────────────
+function limpiarDatosProfesor(body, actual = {}) {
+  const nombre = body.nombre !== undefined ? String(body.nombre).trim() : actual.nombre;
+  const departamento = body.departamento !== undefined ? String(body.departamento).trim() : actual.departamento;
 
-const fail = (message, status = 400) =>
-  Object.assign(new Error(message), { status });
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let text = '';
-
-    req.on('data', chunk => {
-      text += chunk;
-      if (text.length > 1_000_000) {
-        reject(fail('Solicitud demasiado grande', 413));
-        req.destroy();
-      }
-    });
-
-    req.on('end', () => {
-      try {
-        const json = JSON.parse(text || '{}');
-        if (json === null || typeof json !== 'object' || Array.isArray(json)) {
-          return reject(fail('El cuerpo debe ser un objeto JSON'));
-        }
-        resolve(json);
-      } catch {
-        reject(fail('JSON inválido'));
-      }
-    });
-
-    req.on('error', reject);
-  });
-}
-
-const validId = id =>
-  typeof id === 'string' &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-
-function prepare(body, current = {}) {
-  const nombre = body.nombre ?? current.nombre;
-  const departamento = body.departamento ?? current.departamento;
-
-  if (typeof nombre !== 'string' || !nombre.trim() ||
-      typeof departamento !== 'string' || !departamento.trim()) {
-    throw fail('Nombre y departamento son obligatorios');
+  if (!nombre || !departamento) {
+    const error = new Error('Los campos "nombre" y "departamento" son obligatorios');
+    error.status = 400;
+    throw error;
   }
-
-  const reserved = ['id', 'nombre', 'departamento', 'datos', 'actualizado_en'];
-
-  const extras = Object.fromEntries(
-    Object.entries(body).filter(([key]) => !reserved.includes(key))
-  );
 
   return {
-    nombre: nombre.trim(),
-    departamento: departamento.trim(),
-    datos: { ...(current.datos || {}), ...(body.datos || {}), ...extras },
+    nombre,
+    departamento,
+    profesion: (body.profesion !== undefined ? String(body.profesion) : (actual.profesion || '')).trim(),
+    email: (body.email !== undefined ? String(body.email) : (actual.email || '')).trim(),
+    telefono: (body.telefono !== undefined ? String(body.telefono) : (actual.telefono || '')).trim(),
+    imagen_url: (body.imagen_url !== undefined ? String(body.imagen_url) : (body.image_url !== undefined ? String(body.image_url) : (actual.imagen_url || ''))).trim(),
     actualizado_en: new Date().toISOString()
   };
 }
 
-const format = row => ({
-  ...(row.datos || {}),
-  id: row.id,
-  nombre: row.nombre,
-  departamento: row.departamento,
-  actualizado_en: row.actualizado_en
+// ── RUTAS DEL SERVICIO ──────────────────────────────────────
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Estado de salud del microservicio
+ *     tags: [Sistema]
+ *     responses:
+ *       200:
+ *         description: El microservicio se encuentra en línea
+ */
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', engine: 'supabase', timestamp: new Date().toISOString() });
 });
 
-/* ---------- Rutas ---------- */
-
-async function handle(req, res) {
-  if (req.method === 'OPTIONS') return send(res, 204, {});
-
+/**
+ * @swagger
+ * /test-supabase:
+ *   get:
+ *     summary: Probar conexión con la base de datos Supabase
+ *     tags: [Sistema]
+ *     responses:
+ *       200:
+ *         description: Conexión establecida con éxito
+ *       500:
+ *         description: Error conectando a Supabase
+ */
+app.get('/test-supabase', async (req, res, next) => {
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const path = url.pathname;
-
-    if (req.method === 'GET' && (path === '/docs' || path === '/')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(docsHtml);
-    }
-
-    if (req.method === 'GET' && path === '/openapi.json') {
-      return send(res, 200, openapi);
-    }
-
-    if (req.method === 'GET' && path === '/health') {
-      return send(res, 200, { status: 'ok' });
-    }
-
-    if (req.method === 'GET' && path === '/test-supabase') {
-      const { error } = await db.from(TABLE).select('id').limit(1);
-      if (error) throw error;
-      return send(res, 200, { conectado: true });
-    }
-
-    if (req.method === 'GET' && path === '/profesores') {
-      const { data, error } = await db.from(TABLE).select('*').order('nombre');
-      if (error) throw error;
-      return send(res, 200, data.map(format));
-    }
-
-    if (req.method === 'POST' && path === '/profesores') {
-      const body = await readBody(req);
-      const id = body.id || randomUUID();
-
-      if (!validId(id)) throw fail('ID UUID inválido');
-
-      const { data, error } = await db
-        .from(TABLE)
-        .insert({ id, ...prepare(body) })
-        .select('*')
-        .single();
-
-      if (error) throw error;
-      return send(res, 201, format(data));
-    }
-
-    const search = path.match(/^\/search\/(.+)$/);
-
-    if (req.method === 'GET' && search) {
-      let nombre;
-      try {
-        nombre = decodeURIComponent(search[1]).trim();
-      } catch {
-        throw fail('Nombre mal codificado');
-      }
-      if (!nombre) throw fail('Indica un nombre');
-
-      const { data, error } = await db
-        .from(TABLE)
-        .select('*')
-        .ilike('nombre', `%${nombre}%`);
-
-      if (error) throw error;
-      return send(res, 200, data.map(format));
-    }
-
-    const match = path.match(/^\/profesores\/([^/]+)$/);
-
-    if (match && ['PUT', 'DELETE'].includes(req.method)) {
-      const id = match[1];
-
-      if (!validId(id)) throw fail('ID UUID inválido');
-
-      if (req.method === 'DELETE') {
-        const { data, error } = await db
-          .from(TABLE)
-          .delete()
-          .eq('id', id)
-          .select('id')
-          .maybeSingle();
-
-        if (error) throw error;
-        if (!data) throw fail('Profesor no encontrado', 404);
-
-        return send(res, 200, { mensaje: 'Profesor eliminado', id });
-      }
-
-      const body = await readBody(req);
-
-      const { data: current, error: findError } = await db
-        .from(TABLE)
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (findError) throw findError;
-      if (!current) throw fail('Profesor no encontrado', 404);
-
-      const { data, error } = await db
-        .from(TABLE)
-        .update(prepare(body, current))
-        .eq('id', id)
-        .select('*')
-        .single();
-
-      if (error) throw error;
-      return send(res, 200, format(data));
-    }
-
-    throw fail('Ruta no encontrada', 404);
-
-  } catch (error) {
-    // Errores propios traen status; los de Supabase se mapean por código
-    const status = error.status ||
-      (error.code === '23505' ? 409 : ['22P02', '23502'].includes(error.code) ? 400 : 500);
-
-    if (status === 500) console.error('Error API:', error);
-
-    return send(res, status, {
-      error: status === 500 ? 'Error del servidor' : error.message,
-      codigo: error.code || undefined
-    });
+    const db = getSupabase();
+    const { data, error } = await db.from(TABLE).select('id').limit(1);
+    if (error) throw error;
+    res.json({ conectado: true, total_encontrados: data ? data.length : 0 });
+  } catch (err) {
+    next(err);
   }
-}
+});
 
-http.createServer(handle).listen(process.env.PORT || 3000, () => {
-  console.log('Profesores API funcionando. Docs en /docs');
+/**
+ * @swagger
+ * /profesores:
+ *   get:
+ *     summary: Listar todos los profesores
+ *     description: Obtiene la lista completa de docentes ordenados alfabéticamente por nombre.
+ *     tags: [Profesores]
+ *     responses:
+ *       200:
+ *         description: Lista de profesores obtenida con éxito
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Profesor'
+ */
+app.get('/profesores', async (req, res, next) => {
+  try {
+    const db = getSupabase();
+    const { data, error } = await db
+      .from(TABLE)
+      .select('*')
+      .order('nombre', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /profesores/since/{timestamp}:
+ *   get:
+ *     summary: Obtener profesores modificados desde una fecha/timestamp
+ *     description: Endpoint clave para sincronización incremental móvil.
+ *     tags: [Profesores]
+ *     parameters:
+ *       - in: path
+ *         name: timestamp
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Fecha ISO 8601 o timestamp (ej. 2026-10-16T12:00:00Z)
+ *     responses:
+ *       200:
+ *         description: Profesores actualizados desde la fecha dada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Profesor'
+ */
+app.get('/profesores/since/:timestamp', async (req, res, next) => {
+  try {
+    const { timestamp } = req.params;
+    const db = getSupabase();
+    const { data, error } = await db
+      .from(TABLE)
+      .select('*')
+      .gt('actualizado_en', decodeURIComponent(timestamp))
+      .order('actualizado_en', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /search/{nombre}:
+ *   get:
+ *     summary: Buscar profesores por nombre
+ *     tags: [Profesores]
+ *     parameters:
+ *       - in: path
+ *         name: nombre
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Resultados de la búsqueda
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Profesor'
+ */
+app.get('/search/:nombre', async (req, res, next) => {
+  try {
+    const nombre = req.params.nombre?.trim();
+    if (!nombre) return res.status(400).json({ error: 'Debes proporcionar un término de búsqueda' });
+
+    const db = getSupabase();
+    const { data, error } = await db
+      .from(TABLE)
+      .select('*')
+      .ilike('nombre', `%${nombre}%`);
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /profesores/{id}:
+ *   get:
+ *     summary: Obtener un profesor por su ID
+ *     tags: [Profesores]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profesor encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Profesor'
+ *       404:
+ *         description: No encontrado
+ */
+app.get('/profesores/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabase();
+    const { data, error } = await db
+      .from(TABLE)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Profesor no encontrado' });
+
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /profesores:
+ *   post:
+ *     summary: Crear un nuevo profesor
+ *     tags: [Profesores]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProfesorInput'
+ *     responses:
+ *       201:
+ *         description: Profesor creado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Profesor'
+ *       400:
+ *         description: Datos requeridos faltantes o inválidos
+ */
+app.post('/profesores', async (req, res, next) => {
+  try {
+    const db = getSupabase();
+    const nuevoId = req.body.id || randomUUID();
+    const registro = {
+      id: nuevoId,
+      ...limpiarDatosProfesor(req.body)
+    };
+
+    const { data, error } = await db
+      .from(TABLE)
+      .insert(registro)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /profesores/{id}:
+ *   put:
+ *     summary: Actualizar datos de un profesor existente
+ *     tags: [Profesores]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProfesorInput'
+ *     responses:
+ *       200:
+ *         description: Profesor actualizado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Profesor'
+ *       404:
+ *         description: Profesor no encontrado
+ */
+app.put('/profesores/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabase();
+
+    // Verificar existencia previa
+    const { data: actual, error: checkError } = await db
+      .from(TABLE)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+    if (!actual) return res.status(404).json({ error: 'Profesor no encontrado' });
+
+    const datosActualizados = limpiarDatosProfesor(req.body, actual);
+
+    const { data, error } = await db
+      .from(TABLE)
+      .update(datosActualizados)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /profesores/{id}:
+ *   delete:
+ *     summary: Eliminar un profesor por su ID
+ *     tags: [Profesores]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profesor eliminado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/RespuestaEliminacion'
+ *       404:
+ *         description: Profesor no encontrado
+ */
+app.delete('/profesores/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const db = getSupabase();
+
+    const { data, error } = await db
+      .from(TABLE)
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Profesor no encontrado' });
+
+    res.json({ mensaje: 'Profesor eliminado exitosamente', id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Redirigir la raíz / a /docs para visualización inmediata
+app.get('/', (req, res) => res.redirect('/docs'));
+
+// ── MANEJADOR CENTRAL DE ERRORES ────────────────────────────
+app.use((err, req, res, next) => {
+  const status = err.status || (err.code === '23505' ? 409 : ['22P02', '23502'].includes(err.code) ? 400 : 500);
+  if (status === 500) {
+    console.error('Error interno en Profesores API:', err);
+  }
+  res.status(status).json({
+    error: err.message || 'Error interno del servidor',
+    codigo: err.code || undefined
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Profesores API (Supabase) ejecutándose en puerto ${PORT}`);
+  console.log(`Swagger Docs disponibles en: http://localhost:${PORT}/docs`);
 });

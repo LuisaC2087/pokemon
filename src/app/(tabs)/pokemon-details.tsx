@@ -42,11 +42,11 @@ export default function PokemonDetails() {
           </View>
           
           <View style={styles.statsContainer}>
-            <Row label="🛡️ Tipo" value={selectedPokemon.type} />
-            <Row label="📏 Altura" value={`${selectedPokemon.height || "?"} dm`} />
-            <Row label="⚖️ Peso" value={`${selectedPokemon.weight || "?"} hg`} />
-            <Row label="✨ Habilidad" value={selectedPokemon.ability || "Desconocida"} />
-            <Row label="❤️ Puntos de Salud" value={`${selectedPokemon.hp || "?"} HP`} />
+            <Row label="Tipo" value={selectedPokemon.type} />
+            <Row label="Altura" value={`${selectedPokemon.height || "?"} dm`} />
+            <Row label="Peso" value={`${selectedPokemon.weight || "?"} hg`} />
+            <Row label="Habilidad" value={selectedPokemon.ability || "Desconocida"} />
+            <Row label="Puntos de Salud" value={`${selectedPokemon.hp || "?"} HP`} />
           </View>
 
           <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(tabs)/pokemon")}>
