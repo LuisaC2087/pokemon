@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext, useCallback } from "react";
+import { useEffect, useState, useContext, useCallback, useMemo } from "react";
 import {
   Image, ScrollView, StyleSheet, Text, View, TextInput,
   TouchableOpacity, ActivityIndicator, Animated,
@@ -44,12 +44,15 @@ export default function Profesores() {
     }
   }, [syncState.newCount]);
 
-  const filteredProfesores = search.trim()
-    ? localProfesores.filter((p) =>
-        p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        p.departamento.toLowerCase().includes(search.toLowerCase())
-      )
-    : localProfesores;
+  const filteredProfesores = useMemo(() => {
+    if (!search.trim()) return localProfesores;
+    const term = search.toLowerCase();
+    return localProfesores.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(term) ||
+        p.departamento.toLowerCase().includes(term)
+    );
+  }, [search, localProfesores]);
 
   const handlePress = (prof: any) => {
     setSelectedProfesor(prof);

@@ -84,17 +84,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const cloudData = await res.json();
 
       if (Array.isArray(cloudData)) {
-        const { inserted } = await syncProfesoresFromCloud(cloudData);
-        const profs = await getAllProfesoresLocal();
-        const newCount = await countNewProfesores();
-        setLocalProfesores(profs);
-        setSyncState({
-          isSyncing: false,
-          lastSyncAt: new Date(),
-          newCount,
-          error: null,
-          totalLocal: profs.length,
-        });
+        const syncResult = await syncProfesoresFromCloud(cloudData);
+
+        // Solo recargar y actualizar estado si hubo cambios reales en la base de datos
+        if (syncResult.hasChanges) {
+          const profs = await getAllProfesoresLocal();
+          const newCount = await countNewProfesores();
+          setLocalProfesores(profs);
+          setSyncState({
+            isSyncing: false,
+            lastSyncAt: new Date(),
+            newCount,
+            error: null,
+            totalLocal: profs.length,
+          });
+        } else {
+          setSyncState((prev) => ({
+            ...prev,
+            isSyncing: false,
+            lastSyncAt: new Date(),
+            error: null,
+          }));
+        }
       }
     } catch (err: any) {
       setSyncState((prev) => ({
@@ -112,10 +123,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refreshLocal();
   }, [refreshLocal]);
 
-  // Sync inicial al montar
+  // Carga inicial: cargar datos locales de inmediato y luego sincronizar en segundo plano
   useEffect(() => {
-    refreshLocal();
-    triggerSync();
+    refreshLocal().then(() => triggerSync());
   }, []);
 
   // Sync periódico basado en el intervalo seleccionado

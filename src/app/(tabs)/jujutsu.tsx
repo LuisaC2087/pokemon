@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,15 +19,14 @@ export default function Anime() {
   const [serviceStatus, setServiceStatus] = useState<string | null>(null);
   const router = useRouter();
   const { setSelectedJujutsu } = useContext(AppContext);
+  const allCharactersRef = useRef<any[]>([]);
 
   useEffect(() => {
     fetch(`${BASE_URL}/health`)
       .then((res) => res.json())
       .then((data) => setServiceStatus(data.status))
       .catch(() => setServiceStatus("error"));
-  }, []);
 
-  useEffect(() => {
     loadAll();
   }, []);
 
@@ -37,8 +36,12 @@ export default function Anime() {
     fetch(`${BASE_URL}/characters`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setCharacters(data);
-        else setError("Error en respuesta");
+        if (Array.isArray(data)) {
+          setCharacters(data);
+          allCharactersRef.current = data;
+        } else {
+          setError("Error en respuesta");
+        }
       })
       .catch(() => setError("Error cargando personajes"))
       .finally(() => setLoading(false));
@@ -49,15 +52,24 @@ export default function Anime() {
     setSelectedGrade("Todos");
     setDomainOnly(false);
     if (text.length === 0) {
-      loadAll();
+      setCharacters(allCharactersRef.current);
       return;
     }
     if (text.length >= 2) {
       setLoading(true);
       fetch(`${BASE_URL}/characters/search/${text}`)
         .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setCharacters(data); else setCharacters([]); })
-        .catch(() => setCharacters([]))
+        .then((data) => {
+          if (Array.isArray(data)) setCharacters(data);
+          else setCharacters([]);
+        })
+        .catch(() => {
+          // Fallback en memoria si falla la red
+          const localFiltered = allCharactersRef.current.filter((c) =>
+            c.name?.toLowerCase().includes(text.toLowerCase())
+          );
+          setCharacters(localFiltered);
+        })
         .finally(() => setLoading(false));
     }
   }, []);

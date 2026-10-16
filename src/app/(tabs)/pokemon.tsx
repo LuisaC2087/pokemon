@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext, useCallback } from "react";
+import { useEffect, useState, useContext, useCallback, useRef } from "react";
 import { Image, ScrollView, StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
@@ -18,21 +18,24 @@ export default function Pokemon() {
   const [serviceStatus, setServiceStatus] = useState<string | null>(null);
   const router = useRouter();
   const { setSelectedPokemon } = useContext(AppContext);
+  const allPokemonsRef = useRef<any[]>([]);
 
   useEffect(() => {
     fetch(`${BASE_URL}/health`)
       .then((res) => res.json())
       .then((data) => setServiceStatus(data.status))
       .catch(() => setServiceStatus("error"));
-  }, []);
 
-  useEffect(() => {
     setLoading(true);
     fetch(`${BASE_URL}/pokemons`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setPokemons(data);
-        else setError("Error en respuesta");
+        if (Array.isArray(data)) {
+          setPokemons(data);
+          allPokemonsRef.current = data;
+        } else {
+          setError("Error en respuesta");
+        }
       })
       .catch(() => setError("Error cargando pokemons"))
       .finally(() => setLoading(false));
@@ -42,20 +45,23 @@ export default function Pokemon() {
     setSearch(text);
     setSelectedType("Todos");
     if (text.length === 0) {
-      setLoading(true);
-      fetch(`${BASE_URL}/pokemons`)
-        .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setPokemons(data); })
-        .catch(() => setError("Error buscando"))
-        .finally(() => setLoading(false));
+      setPokemons(allPokemonsRef.current);
       return;
     }
     if (text.length >= 2) {
       setLoading(true);
       fetch(`${BASE_URL}/pokemons/search/${text}`)
         .then((res) => res.json())
-        .then((data) => { if (Array.isArray(data)) setPokemons(data); })
-        .catch(() => setError("Error buscando"))
+        .then((data) => {
+          if (Array.isArray(data)) setPokemons(data);
+        })
+        .catch(() => {
+          // Fallback en memoria si falla la red
+          const localFiltered = allPokemonsRef.current.filter((p) =>
+            p.name?.toLowerCase().includes(text.toLowerCase())
+          );
+          setPokemons(localFiltered);
+        })
         .finally(() => setLoading(false));
     }
   }, []);

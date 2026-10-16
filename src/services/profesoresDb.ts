@@ -1,12 +1,12 @@
 /**
  * profesoresDb.ts
  * Servicio de base de datos local SQLite para profesores.
- * Maneja la tabla con campos reducidos y sincronización con Supabase (nube).
+ * Optimizado para minimizar operaciones de disco y evitar re-renders innecesarios.
  */
 import * as SQLite from 'expo-sqlite';
 
 export interface ProfesorLocal {
-  id: string;             // ID único (mismo id de Supabase)
+  id: string;             // ID único de Supabase / SQLite
   nombre: string;
   departamento: string;
   profesion: string;
@@ -17,33 +17,26 @@ export interface ProfesorLocal {
   synced_at: number;      // timestamp Unix de última sincronización
 }
 
-let db: SQLite.SQLiteDatabase | null = null;
+export interface SyncResult {
+  inserted: number;
+  updated: number;
+  deleted: number;
+  hasChanges: boolean;
+}
+
+let dbInstance: SQLite.SQLiteDatabase | null = null;
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!db) {
-    db = await SQLite.openDatabaseAsync('profesores.db');
-    await initializeDb(db);
+  if (!dbInstance) {
+    dbInstance = await SQLite.openDatabaseAsync('profesores.db');
+    await initializeDb(dbInstance);
   }
-  return db;
+  return dbInstance;
 }
 
 async function initializeDb(database: SQLite.SQLiteDatabase): Promise<void> {
-  await database.execAsync('PRAGMA journal_mode = WAL;');
-
-  // Migración automática: si la tabla existente tiene 'cloud_id', se recrea con 'id'
-  try {
-    const tableInfo = await database.getAllAsync<{ name: string }>(
-      'PRAGMA table_info(profesores)'
-    );
-    const hasCloudId = tableInfo.some((col) => col.name === 'cloud_id');
-    if (hasCloudId) {
-      await database.execAsync('DROP TABLE IF EXISTS profesores;');
-    }
-  } catch (e) {
-    console.warn('Error verificando migración:', e);
-  }
-
   await database.execAsync(`
+    PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS profesores (
       id           TEXT    PRIMARY KEY NOT NULL,
       nombre       TEXT    NOT NULL,
@@ -77,7 +70,7 @@ export async function countNewProfesores(): Promise<number> {
   return row?.count ?? 0;
 }
 
-/** Marca un profesor como "visto" (quita el indicador nuevo) */
+/** Marca un profesor como visto */
 export async function markProfesorSeen(id: string): Promise<void> {
   const database = await getDb();
   await database.runAsync('UPDATE profesores SET is_new = 0 WHERE id = ?', id);
@@ -86,40 +79,45 @@ export async function markProfesorSeen(id: string): Promise<void> {
 /** Marca todos los profesores como vistos */
 export async function markAllSeen(): Promise<void> {
   const database = await getDb();
-  await database.runAsync('UPDATE profesores SET is_new = 0');
+  await database.runAsync('UPDATE profesores SET is_new = 0 WHERE is_new = 1');
 }
 
 /**
- * Sincroniza un array de profesores desde la nube con SQLite.
- * La nube siempre tiene prioridad. Detecta duplicados por id.
- * Retorna el número de registros nuevos insertados.
+ * Sincroniza profesores de la nube con SQLite de forma inteligente.
+ * Solo escribe en SQLite si realmente hay cambios, evitando escrituras redundantes.
  */
 export async function syncProfesoresFromCloud(
   cloudProfesores: any[]
-): Promise<{ inserted: number; updated: number }> {
+): Promise<SyncResult> {
   const database = await getDb();
-  let inserted = 0;
-  let updated = 0;
   const now = Date.now();
 
+  // 1. Cargar el estado local en una sola consulta en memoria
+  const localList = await database.getAllAsync<ProfesorLocal>('SELECT * FROM profesores');
+  const localMap = new Map<string, ProfesorLocal>(localList.map((p) => [p.id, p]));
+
+  let inserted = 0;
+  let updated = 0;
+  let deleted = 0;
+
+  const cloudIds = new Set<string>();
+
   for (const prof of cloudProfesores) {
-    const id = String(prof.id ?? prof._id ?? '');
+    const id = String(prof.id ?? prof._id ?? '').trim();
     if (!id) continue;
+    cloudIds.add(id);
 
-    const existing = await database.getFirstAsync<ProfesorLocal>(
-      'SELECT * FROM profesores WHERE id = ?',
-      id
-    );
+    const nombre = (prof.nombre ?? '').trim();
+    const depto = (prof.departamento ?? '').trim();
+    const profesion = (prof.profesion ?? '').trim();
+    const email = (prof.email ?? '').trim();
+    const telefono = String(prof.telefono ?? prof.contactos ?? '').trim();
+    const imagenUrl = (prof.imagen_url ?? prof.image_url ?? '').trim();
 
-    const nombre     = prof.nombre ?? '';
-    const depto      = prof.departamento ?? '';
-    const profesion  = prof.profesion ?? '';
-    const email      = prof.email ?? '';
-    const telefono   = String(prof.telefono ?? prof.contactos ?? '');
-    const imagenUrl  = prof.imagen_url ?? prof.image_url ?? '';
+    const local = localMap.get(id);
 
-    if (!existing) {
-      // Registro nuevo: insertarlo y marcarlo como nuevo
+    if (!local) {
+      // Registro nuevo en la nube: insertar y marcar como nuevo
       await database.runAsync(
         `INSERT INTO profesores (id, nombre, departamento, profesion, email, telefono, imagen_url, is_new, synced_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
@@ -127,34 +125,50 @@ export async function syncProfesoresFromCloud(
       );
       inserted++;
     } else {
-      // Registro existente: la nube tiene prioridad, actualizar datos
-      await database.runAsync(
-        `UPDATE profesores
-         SET nombre=?, departamento=?, profesion=?, email=?, telefono=?, imagen_url=?, synced_at=?
-         WHERE id=?`,
-        nombre, depto, profesion, email, telefono, imagenUrl, now, id
-      );
-      updated++;
+      // Verificar si alguno de los campos realmente cambió antes de actualizar en disco
+      const cambio =
+        local.nombre !== nombre ||
+        local.departamento !== depto ||
+        local.profesion !== profesion ||
+        local.email !== email ||
+        local.telefono !== telefono ||
+        local.imagen_url !== imagenUrl;
+
+      if (cambio) {
+        await database.runAsync(
+          `UPDATE profesores
+           SET nombre=?, departamento=?, profesion=?, email=?, telefono=?, imagen_url=?, synced_at=?
+           WHERE id=?`,
+          nombre, depto, profesion, email, telefono, imagenUrl, now, id
+        );
+        updated++;
+      }
     }
   }
 
-  // La nube tiene prioridad: eliminar localmente registros que ya no existan en la nube
-  const cloudIds = cloudProfesores.map((p) => String(p.id ?? p._id ?? '')).filter(Boolean);
-  if (cloudIds.length > 0) {
-    const placeholders = cloudIds.map(() => '?').join(',');
+  // 2. Solo eliminar si hay IDs en local que ya no existan en la nube
+  if (cloudIds.size > 0 && localList.length > 0) {
+    const toDelete = localList.filter((p) => !cloudIds.has(p.id));
+    if (toDelete.length > 0) {
+      const placeholders = toDelete.map(() => '?').join(',');
+      await database.runAsync(
+        `DELETE FROM profesores WHERE id IN (${placeholders})`,
+        ...toDelete.map((p) => p.id)
+      );
+      deleted = toDelete.length;
+    }
+  }
+
+  const hasChanges = inserted > 0 || updated > 0 || deleted > 0;
+
+  if (hasChanges) {
     await database.runAsync(
-      `DELETE FROM profesores WHERE id NOT IN (${placeholders})`,
-      ...cloudIds
+      `INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('last_sync', ?)`,
+      String(now)
     );
   }
 
-  // Guardar timestamp de última sincronización exitosa
-  await database.runAsync(
-    `INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('last_sync', ?)`,
-    String(now)
-  );
-
-  return { inserted, updated };
+  return { inserted, updated, deleted, hasChanges };
 }
 
 /** Obtiene el timestamp de la última sincronización */
