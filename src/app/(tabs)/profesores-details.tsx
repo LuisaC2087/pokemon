@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
-import { deleteProfesorLocal } from "../../services/profesoresDb";
+import { queueDeleteProfesor } from "../../services/profesoresDb";
 
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
 
@@ -53,15 +53,11 @@ export default function ProfesoresDetails() {
 
     setDeleting(true);
     try {
-      const res = await fetch(`${BASE_URL}/profesores/${profId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Error al eliminar");
+      // 1. Eliminar de la base de datos local y registrar en la cola de sincronización
+      await queueDeleteProfesor(String(profId));
 
-      // Eliminar inmediatamente del almacenamiento local
-      try {
-        await deleteProfesorLocal(String(profId));
-      } catch (e) {
-        // ignora si falla local
-      }
+      // 2. Disparar sincronización para propagar la eliminación a la base de datos en la nube
+      triggerSync().catch((err) => console.warn("Error sincronizando eliminación:", err));
 
       if (Platform.OS === "web") {
         window.alert("Profesor eliminado exitosamente");
@@ -70,7 +66,6 @@ export default function ProfesoresDetails() {
       }
 
       setSelectedProfesor(null);
-      await triggerSync();
       router.push("/(tabs)/profesores");
     } catch (err: any) {
       if (Platform.OS === "web") {

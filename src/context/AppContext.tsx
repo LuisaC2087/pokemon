@@ -5,6 +5,7 @@ import {
   getAllProfesoresLocal,
   countNewProfesores,
   markAllSeen,
+  processSyncQueue,
   type ProfesorLocal,
 } from "../services/profesoresDb";
 
@@ -77,6 +78,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSyncState((prev) => ({ ...prev, isSyncing: true, error: null }));
 
     try {
+      // 1. FASE PUSH: Enviar mutaciones locales pendientes (eliminaciones, inserciones, actualizaciones)
+      const pushedCount = await processSyncQueue(BASE_URL);
+
+      // 2. FASE PULL: Obtener datos actualizados de la nube
       const res = await fetch(`${BASE_URL}/profesores`, {
         signal: AbortSignal.timeout(8000),
       });
@@ -84,10 +89,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const cloudData = await res.json();
 
       if (Array.isArray(cloudData)) {
+        // 3. FASE RECONCILIACIÓN: Actualizar BD local respetando cambios en cola
         const syncResult = await syncProfesoresFromCloud(cloudData);
 
-        // Solo recargar y actualizar estado si hubo cambios reales en la base de datos
-        if (syncResult.hasChanges) {
+        // Si hubo cambios locales o se enviaron mutaciones a la nube, recargar estado
+        if (syncResult.hasChanges || pushedCount > 0) {
           const profs = await getAllProfesoresLocal();
           const newCount = await countNewProfesores();
           setLocalProfesores(profs);

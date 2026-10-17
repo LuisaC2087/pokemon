@@ -9,7 +9,7 @@ import * as ImagePicker from "expo-image-picker";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
-
+import { queueInsertProfesor, queueUpdateProfesor, type ProfesorLocal } from "../../services/profesoresDb";
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
 
 interface InputFieldProps {
@@ -151,36 +151,41 @@ export default function ProfesoresForm() {
     }
     setLoading(true);
 
-    const payload = {
-      nombre:       formData.nombre.trim(),
-      departamento: formData.departamento.trim(),
-      profesion:    formData.profesion.trim(),
-      email:        formData.email.trim(),
-      telefono:     formData.telefono.trim(),
-      imagen_url:   formData.imagen_url,
-    };
-
     try {
-      const profId = selectedProfesor?.id ?? selectedProfesor?._id;
-      const url = isEditing ? `${BASE_URL}/profesores/${profId}` : `${BASE_URL}/profesores`;
-      const method = isEditing ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      // Generar o conservar ID único
+      const profId = isEditing
+        ? (selectedProfesor?.id ?? selectedProfesor?._id)
+        : (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `prof_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.error || "Error al guardar el profesor en la base de datos");
+      const profesorRecord: ProfesorLocal = {
+        id: String(profId),
+        nombre: formData.nombre.trim(),
+        departamento: formData.departamento.trim(),
+        profesion: formData.profesion.trim(),
+        email: formData.email.trim(),
+        telefono: formData.telefono.trim(),
+        imagen_url: formData.imagen_url,
+        is_new: 0,
+        synced_at: Date.now(),
+      };
+
+      // 1. Guardar de inmediato en local y registrar en la cola de sincronización (Outbox)
+      if (isEditing) {
+        await queueUpdateProfesor(profesorRecord);
+      } else {
+        await queueInsertProfesor(profesorRecord);
       }
+
+      // 2. Disparar sincronización para propagar a la base de datos en la nube
+      triggerSync().catch((err) => console.warn("Error en sync tras guardar:", err));
 
       const successMsg = `¡Profesor ${isEditing ? "actualizado" : "registrado"} exitosamente en la base de datos!`;
 
       if (Platform.OS === "web") {
         window.alert("✅ " + successMsg);
         setSelectedProfesor(null);
-        await triggerSync();
         router.push("/(tabs)/profesores");
       } else {
         Alert.alert(
@@ -188,9 +193,8 @@ export default function ProfesoresForm() {
           successMsg,
           [{
             text: "OK",
-            onPress: async () => {
+            onPress: () => {
               setSelectedProfesor(null);
-              await triggerSync();
               router.push("/(tabs)/profesores");
             },
           }]
