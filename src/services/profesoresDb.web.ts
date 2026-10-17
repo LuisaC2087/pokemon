@@ -314,6 +314,10 @@ export async function syncProfesoresFromCloud(cloudProfesores: any[]): Promise<S
       continue;
     }
 
+    // Evitar procesar duplicados si el mismo ID viene más de una vez en el payload
+    if (cloudIds.has(id)) {
+      continue;
+    }
     cloudIds.add(id);
 
     // Si hay una mutación local no sincronizada, respetar datos locales

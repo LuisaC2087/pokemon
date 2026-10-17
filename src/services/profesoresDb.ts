@@ -315,6 +315,10 @@ export async function syncProfesoresFromCloud(
       continue;
     }
 
+    // Evitar procesar duplicados si el mismo ID viene más de una vez en el payload
+    if (cloudIds.has(id)) {
+      continue;
+    }
     cloudIds.add(id);
 
     // Si hay una mutación local pendiente sobre este registro, respetamos la versión local
@@ -332,12 +336,15 @@ export async function syncProfesoresFromCloud(
     const local = localMap.get(id);
 
     if (!local) {
-      // Registro nuevo en la nube
+      // Registro nuevo en la nube (INSERT OR REPLACE previene colisiones)
       await database.runAsync(
-        `INSERT INTO profesores (id, nombre, departamento, profesion, email, telefono, imagen_url, is_new, synced_at)
+        `INSERT OR REPLACE INTO profesores (id, nombre, departamento, profesion, email, telefono, imagen_url, is_new, synced_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
         id, nombre, depto, profesion, email, telefono, imagenUrl, now
       );
+      localMap.set(id, {
+        id, nombre, departamento: depto, profesion, email, telefono, imagen_url: imagenUrl, is_new: 0, synced_at: now
+      });
       inserted++;
     } else {
       const cambio =
