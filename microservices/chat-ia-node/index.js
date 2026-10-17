@@ -12,7 +12,7 @@ app.use(express.json());
 
 const PORT = parseInt(process.env.PORT || '3003', 10);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 // Inicializar Google Generative AI
 let genAI = null;
