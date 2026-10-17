@@ -113,14 +113,11 @@ app.post('/chat', async (req, res) => {
 
     try {
       const systemPrompt = knowledgeBase.buildSystemPrompt();
-      const model = genAI.getGenerativeModel({
-        model: GEMINI_MODEL,
-        systemInstruction: systemPrompt,
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 800,
-        }
-      });
+      const candidateModels = [GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash']
+        .filter((val, idx, arr) => arr.indexOf(val) === idx);
+
+      let lastError = null;
+      let textResponse = null;
 
       const contents = [];
       if (Array.isArray(history)) {
@@ -139,8 +136,34 @@ app.post('/chat', async (req, res) => {
         parts: [{ text: trimmedMessage }]
       });
 
-      const result = await model.generateContent({ contents });
-      const textResponse = stripEmojis(result.response.text());
+      for (const modelName of candidateModels) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: systemPrompt,
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 800,
+            }
+          });
+
+          const result = await model.generateContent({ contents });
+          textResponse = stripEmojis(result.response.text());
+          break;
+        } catch (err) {
+          lastError = err;
+          // Si el modelo da 404 o unsupported, intentamos con el siguiente de la lista
+          if (err.message && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('not supported'))) {
+            console.warn(`[Chat-IA] Modelo ${modelName} no disponible, intentando con siguiente modelo...`);
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!textResponse && lastError) {
+        throw lastError;
+      }
 
       const outOfScope = textResponse.toLowerCase().includes('fuera de') || 
                          textResponse.toLowerCase().includes('solo tengo acceso') ||
