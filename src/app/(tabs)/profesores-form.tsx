@@ -113,7 +113,13 @@ export default function ProfesoresForm() {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      return Alert.alert("Permiso denegado", "Se requiere permiso para acceder a la galería de fotos.");
+      const msg = "Se requiere permiso para acceder a la galería de fotos.";
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert("Permiso denegado", msg);
+      }
+      return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -135,7 +141,13 @@ export default function ProfesoresForm() {
 
   const handleSave = async () => {
     if (!formData.nombre.trim() || !formData.departamento.trim()) {
-      return Alert.alert("Error", "Nombre y departamento son obligatorios.");
+      const msg = "Nombre y departamento son obligatorios.";
+      if (Platform.OS === "web") {
+        window.alert("⚠️ " + msg);
+      } else {
+        Alert.alert("Error", msg);
+      }
+      return;
     }
     setLoading(true);
 
@@ -163,20 +175,33 @@ export default function ProfesoresForm() {
         throw new Error(errorData?.error || "Error al guardar el profesor en la base de datos");
       }
 
-      Alert.alert(
-        "Éxito",
-        `Profesor ${isEditing ? "actualizado" : "creado"} correctamente en la base de datos.`,
-        [{
-          text: "OK",
-          onPress: async () => {
-            setSelectedProfesor(null);
-            await triggerSync();
-            router.push("/(tabs)/profesores");
-          },
-        }]
-      );
+      const successMsg = `¡Profesor ${isEditing ? "actualizado" : "registrado"} exitosamente en la base de datos!`;
+
+      if (Platform.OS === "web") {
+        window.alert("✅ " + successMsg);
+        setSelectedProfesor(null);
+        await triggerSync();
+        router.push("/(tabs)/profesores");
+      } else {
+        Alert.alert(
+          "Éxito",
+          successMsg,
+          [{
+            text: "OK",
+            onPress: async () => {
+              setSelectedProfesor(null);
+              await triggerSync();
+              router.push("/(tabs)/profesores");
+            },
+          }]
+        );
+      }
     } catch (err: any) {
-      Alert.alert("Error", err.message);
+      if (Platform.OS === "web") {
+        window.alert("❌ Error: " + err.message);
+      } else {
+        Alert.alert("Error", err.message);
+      }
     } finally {
       setLoading(false);
     }

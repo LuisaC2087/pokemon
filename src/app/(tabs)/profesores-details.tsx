@@ -1,12 +1,13 @@
-import { useContext, useState, useEffect } from "react";
+import { useContext, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Image, Alert, ActivityIndicator,
+  TouchableOpacity, Image, Alert, ActivityIndicator, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
+import { deleteProfesorLocal } from "../../services/profesoresDb";
 
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
 
@@ -35,28 +36,51 @@ export default function ProfesoresDetails() {
     );
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const profId = p.id || p._id;
-    Alert.alert("Confirmar", "¿Eliminar este profesor?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar", style: "destructive", onPress: async () => {
-          setDeleting(true);
-          try {
-            const res = await fetch(`${BASE_URL}/profesores/${profId}`, { method: "DELETE" });
-            if (!res.ok) throw new Error("Error al eliminar");
-            Alert.alert("Éxito", "Profesor eliminado");
-            setSelectedProfesor(null);
-            await triggerSync(); // re-sync después de eliminar
-            router.push("/(tabs)/profesores");
-          } catch (err: any) {
-            Alert.alert("Error", err.message);
-          } finally {
-            setDeleting(false);
-          }
-        },
-      },
-    ]);
+
+    // En web, window.confirm funciona; Alert.alert con botones no.
+    const confirmed = Platform.OS === "web"
+      ? window.confirm("¿Eliminar este profesor?")
+      : await new Promise<boolean>((resolve) =>
+          Alert.alert("Confirmar", "¿Eliminar este profesor?", [
+            { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+            { text: "Eliminar", style: "destructive", onPress: () => resolve(true) },
+          ])
+        );
+
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`${BASE_URL}/profesores/${profId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Error al eliminar");
+
+      // Eliminar inmediatamente del almacenamiento local
+      try {
+        await deleteProfesorLocal(String(profId));
+      } catch (e) {
+        // ignora si falla local
+      }
+
+      if (Platform.OS === "web") {
+        window.alert("Profesor eliminado exitosamente");
+      } else {
+        Alert.alert("Éxito", "Profesor eliminado");
+      }
+
+      setSelectedProfesor(null);
+      await triggerSync();
+      router.push("/(tabs)/profesores");
+    } catch (err: any) {
+      if (Platform.OS === "web") {
+        window.alert("Error: " + err.message);
+      } else {
+        Alert.alert("Error", err.message);
+      }
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleEdit = () => router.push("/(tabs)/profesores-form");

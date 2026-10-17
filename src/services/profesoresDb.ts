@@ -179,3 +179,9 @@ export async function getLastSyncTimestamp(): Promise<number> {
   );
   return row ? parseInt(row.value, 10) : 0;
 }
+
+/** Elimina un profesor localmente por su ID */
+export async function deleteProfesorLocal(id: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM profesores WHERE id = ?`, id);
+}

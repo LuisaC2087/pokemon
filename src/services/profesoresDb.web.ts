@@ -173,3 +173,9 @@ export async function getLastSyncTimestamp(): Promise<number> {
   }
   return 0;
 }
+
+export async function deleteProfesorLocal(id: string): Promise<void> {
+  const list = readStorage();
+  const updated = list.filter((p) => p.id !== id);
+  writeStorage(updated);
+}
