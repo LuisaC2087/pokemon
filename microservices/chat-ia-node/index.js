@@ -14,7 +14,7 @@ const PORT = parseInt(process.env.PORT || '3003', 10);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
-// Inicializar Google Generative AI si la clave esta presente
+// Inicializar Google Generative AI
 let genAI = null;
 if (GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10) {
   try {
@@ -24,7 +24,7 @@ if (GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10) {
     console.error('[Chat-IA] Error inicializando Google Generative AI:', err.message);
   }
 } else {
-  console.log('[Chat-IA] AVISO: GEMINI_API_KEY no configurada. El microservicio operara con el motor de base de datos de los microservicios.');
+  console.log('[Chat-IA] AVISO: GEMINI_API_KEY no configurada. Configure GEMINI_API_KEY en .env para habilitar las respuestas de la IA.');
 }
 
 // Swagger OpenAPI 3.0
@@ -34,7 +34,7 @@ const swaggerOptions = {
     info: {
       title: 'Chat IA - Microservicio',
       version: '1.0.0',
-      description: 'Microservicio de Asistente IA conectado a los microservicios de Pokemon, Jujutsu Kaisen y Profesores. Limitado estrictamente a los datos de los microservicios sin datos hardcodeados.',
+      description: 'Microservicio de Asistente IA conectado a los microservicios de Pokemon, Jujutsu Kaisen y Profesores.',
     },
     servers: [
       { url: process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`, description: 'Servidor principal' },
@@ -46,12 +46,18 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// Helper para limpiar cualquier emoji
+function stripEmojis(text) {
+  if (!text) return '';
+  return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]/gu, '').trim();
+}
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'chat-ia-node',
     hasGeminiKey: Boolean(genAI),
-    model: genAI ? GEMINI_MODEL : 'motor-microservicios',
+    model: genAI ? GEMINI_MODEL : null,
     counts: {
       pokemons: knowledgeBase.pokemons.length,
       jujutsuCharacters: knowledgeBase.characters.length,
@@ -74,7 +80,7 @@ app.post('/sync', async (req, res) => {
     await knowledgeBase.syncFromMicroservices();
     res.json({
       status: 'ok',
-      message: 'Sincronizacion completada con microservicios',
+      message: 'Sincronizacion con microservicios completada',
       counts: {
         pokemons: knowledgeBase.pokemons.length,
         jujutsuCharacters: knowledgeBase.characters.length,
@@ -87,93 +93,74 @@ app.post('/sync', async (req, res) => {
   }
 });
 
-// Helper para limpiar emojis de cualquier texto
-function stripEmojis(text) {
-  if (!text) return '';
-  return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]/gu, '').trim();
-}
-
 app.post('/chat', async (req, res) => {
   try {
     const { message, history } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'El campo message es requerido y no puede estar vacio' });
+      return res.status(400).json({ error: 'El campo message es requerido y no puede estar vacio.' });
+    }
+
+    // Si la IA no esta configurada, no responder con motores locales: detenerse e informar error
+    if (!genAI) {
+      return res.status(503).json({
+        error: 'El servicio de Inteligencia Artificial no esta disponible. Configure una clave valida en GEMINI_API_KEY para habilitar el asistente.',
+        reply: 'El servicio de Inteligencia Artificial no esta configurado actualmente. Por favor verifique la clave de API.',
+      });
     }
 
     const trimmedMessage = message.trim();
 
-    // Verificacion de relevancia
-    const isRelevant = knowledgeBase.isRelevantQuery(trimmedMessage);
-    if (!isRelevant) {
-      const fallback = knowledgeBase.generateFallbackResponse(trimmedMessage);
-      return res.json({
-        ...fallback,
-        reply: stripEmojis(fallback.reply)
+    try {
+      const systemPrompt = knowledgeBase.buildSystemPrompt();
+      const model = genAI.getGenerativeModel({
+        model: GEMINI_MODEL,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 800,
+        }
       });
-    }
 
-    // Si Gemini esta disponible, intentar llamar al modelo con system prompt
-    if (genAI) {
-      try {
-        const systemPrompt = knowledgeBase.buildSystemPrompt();
-        const model = genAI.getGenerativeModel({
-          model: GEMINI_MODEL,
-          systemInstruction: systemPrompt,
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 800,
+      const contents = [];
+      if (Array.isArray(history)) {
+        history.slice(-6).forEach(h => {
+          if (h.role && h.content) {
+            contents.push({
+              role: h.role === 'assistant' ? 'model' : h.role,
+              parts: [{ text: stripEmojis(h.content) }]
+            });
           }
         });
-
-        const contents = [];
-        if (Array.isArray(history)) {
-          history.slice(-6).forEach(h => {
-            if (h.role && h.content) {
-              contents.push({
-                role: h.role === 'assistant' ? 'model' : h.role,
-                parts: [{ text: stripEmojis(h.content) }]
-              });
-            }
-          });
-        }
-
-        contents.push({
-          role: 'user',
-          parts: [{ text: trimmedMessage }]
-        });
-
-        const result = await model.generateContent({ contents });
-        const textResponse = stripEmojis(result.response.text());
-
-        const outOfScope = textResponse.toLowerCase().includes('fuera de') || 
-                           textResponse.toLowerCase().includes('solo tengo acceso') ||
-                           textResponse.toLowerCase().includes('no puedo responder');
-
-        return res.json({
-          reply: textResponse,
-          suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
-          outOfScope,
-          provider: 'gemini'
-        });
-      } catch (geminiError) {
-        console.error('[Chat-IA] Error en llamada a Gemini API:', geminiError.message);
-        const fallback = knowledgeBase.generateFallbackResponse(trimmedMessage);
-        return res.json({
-          ...fallback,
-          reply: stripEmojis(fallback.reply),
-          provider: 'microservicios-fallback'
-        });
       }
-    }
 
-    // Si no hay Gemini, responder con los datos en memoria consultados de los microservicios
-    const fallback = knowledgeBase.generateFallbackResponse(trimmedMessage);
-    return res.json({
-      ...fallback,
-      reply: stripEmojis(fallback.reply),
-      provider: 'microservicios-directo'
-    });
+      contents.push({
+        role: 'user',
+        parts: [{ text: trimmedMessage }]
+      });
+
+      const result = await model.generateContent({ contents });
+      const textResponse = stripEmojis(result.response.text());
+
+      const outOfScope = textResponse.toLowerCase().includes('fuera de') || 
+                         textResponse.toLowerCase().includes('solo tengo acceso') ||
+                         textResponse.toLowerCase().includes('limitado estrictamente') ||
+                         textResponse.toLowerCase().includes('no puedo responder');
+
+      return res.json({
+        reply: textResponse,
+        suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
+        outOfScope,
+        provider: 'gemini'
+      });
+    } catch (geminiError) {
+      console.error('[Chat-IA] Error en llamada a Gemini API:', geminiError.message);
+      return res.status(502).json({
+        error: 'Error al comunicarse con la Inteligencia Artificial de Gemini.',
+        reply: 'El servicio de Inteligencia Artificial no pudo procesar la solicitud en este momento. Por favor intente nuevamente mas tarde.',
+        details: geminiError.message
+      });
+    }
 
   } catch (error) {
     console.error('[Chat-IA] Error interno:', error);
@@ -196,8 +183,7 @@ const server = app.listen(PORT, async () => {
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[Chat-IA] Error: El puerto ${PORT} ya esta en uso por otro proceso.`);
-    console.error(`[Chat-IA] Puedes detener el proceso que ocupa el puerto ${PORT} o cambiar el PORT en el archivo .env.`);
+    console.error(`[Chat-IA] Error: El puerto ${PORT} ya esta en uso.`);
     process.exit(1);
   } else {
     console.error('[Chat-IA] Error del servidor:', err);
