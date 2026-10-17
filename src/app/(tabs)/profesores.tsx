@@ -1,7 +1,7 @@
-import { useEffect, useState, useContext, useCallback, useMemo } from "react";
+import { useState, useContext, useMemo } from "react";
 import {
   Image, ScrollView, StyleSheet, Text, View, TextInput,
-  TouchableOpacity, ActivityIndicator, Animated,
+  TouchableOpacity, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
@@ -23,26 +23,9 @@ export default function Profesores() {
     syncState,
     localProfesores,
     triggerSync,
-    markAllProfesoresSeen,
   } = useContext(AppContext);
 
   const [search, setSearch] = useState("");
-  const [pulseAnim] = useState(new Animated.Value(1));
-
-  // Pulso animado en el indicador de nuevos
-  useEffect(() => {
-    if (syncState.newCount > 0) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.stopAnimation();
-      pulseAnim.setValue(1);
-    }
-  }, [syncState.newCount]);
 
   const filteredProfesores = useMemo(() => {
     if (!search.trim()) return localProfesores;
@@ -76,11 +59,6 @@ export default function Profesores() {
       {/* ── HEADER ──────────────────────────────── */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Profesores</Text>
-        {syncState.newCount > 0 && (
-          <Animated.View style={[styles.newBadgeGlobal, { transform: [{ scale: pulseAnim }] }]}>
-            <Text style={styles.newBadgeGlobalText}>+{syncState.newCount} nuevos</Text>
-          </Animated.View>
-        )}
       </View>
 
       {/* ── PANEL DE SINCRONIZACIÓN ──────────────── */}
@@ -122,11 +100,6 @@ export default function Profesores() {
         {/* Info totales */}
         <View style={styles.statsRow}>
           <Text style={styles.statText}>Local: {syncState.totalLocal} registros</Text>
-          {syncState.newCount > 0 && (
-            <TouchableOpacity onPress={markAllProfesoresSeen}>
-              <Text style={styles.markSeenText}>Marcar todos vistos ✓</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {syncState.error ? <Text style={styles.errorText}>{syncState.error}</Text> : null}
@@ -159,15 +132,8 @@ export default function Profesores() {
             intensity={20}
             tint="dark"
             key={prof.id}
-            style={[styles.glassCard, prof.is_new === 1 && styles.glassCardNew]}
+            style={styles.glassCard}
           >
-            {/* Badge NUEVO */}
-            {prof.is_new === 1 && (
-              <View style={styles.newBadge}>
-                <Text style={styles.newBadgeText}>NUEVO</Text>
-              </View>
-            )}
-
             <Image
               source={{
                 uri: prof.imagen_url ||
@@ -247,8 +213,6 @@ const styles = StyleSheet.create({
   // Header
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 12, gap: 10 },
   header: { color: "#fff", fontSize: 30, fontWeight: "bold", textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
-  newBadgeGlobal: { backgroundColor: "#ff6b6b", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
-  newBadgeGlobalText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
 
   // Sync panel
   syncPanel: {
@@ -281,7 +245,6 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   statText: { color: "#8892b0", fontSize: 11 },
-  markSeenText: { color: "#64ffda", fontSize: 11, fontWeight: "bold" },
   errorText: { color: "#ff6b6b", fontSize: 12, marginTop: 4 },
 
   // Search
@@ -327,19 +290,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
     backgroundColor: "rgba(0,0,0,0.2)",
   },
-  glassCardNew: {
-    borderColor: "rgba(100,255,218,0.5)",
-    backgroundColor: "rgba(100,255,218,0.06)",
-  },
-
-  // NUEVO badge
-  newBadge: {
-    position: "absolute", top: 10, right: 10,
-    backgroundColor: "#ff6b6b",
-    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
-    zIndex: 10,
-  },
-  newBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold", letterSpacing: 0.5 },
 
   cardInfo: { flex: 1, marginLeft: 12 },
   image: { width: 72, height: 72, borderRadius: 36, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)" },

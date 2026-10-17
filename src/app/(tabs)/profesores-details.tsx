@@ -7,7 +7,6 @@ import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
-import { markProfesorSeen } from "../../services/profesoresDb";
 
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
 
@@ -15,16 +14,6 @@ export default function ProfesoresDetails() {
   const { selectedProfesor: p, setSelectedProfesor, triggerSync } = useContext(AppContext);
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
-
-  // Marcar como visto al abrir los detalles
-  useEffect(() => {
-    if (p?.id && p?.is_new === 1) {
-      markProfesorSeen(p.id).then(() => {
-        // Actualizar el profesor seleccionado para quitar el badge
-        setSelectedProfesor({ ...p, is_new: 0 });
-      });
-    }
-  }, [p?.id]);
 
   if (!p) {
     return (
@@ -101,13 +90,6 @@ export default function ProfesoresDetails() {
             style={styles.image}
           />
 
-          {/* Badge NUEVO si aplica */}
-          {p.is_new === 1 && (
-            <View style={styles.newBadge}>
-              <Text style={styles.newBadgeText}>NUEVO</Text>
-            </View>
-          )}
-
           <Text style={styles.name}>{nombre}</Text>
           <Text style={styles.profesionText}>{profesion}</Text>
           <Text style={styles.deptText}>{depto}</Text>
@@ -162,12 +144,6 @@ const styles = StyleSheet.create({
     width: 120, height: 120, borderRadius: 60,
     marginBottom: 15, borderWidth: 3, borderColor: "#64ffda",
   },
-  newBadge: {
-    backgroundColor: "#ff6b6b", borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 4,
-    marginBottom: 8,
-  },
-  newBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 13, letterSpacing: 1 },
   name: {
     fontSize: 26, fontWeight: "bold", color: "#fff",
     textAlign: "center", textShadowColor: "rgba(0,0,0,0.5)",
