@@ -94,6 +94,175 @@ class KnowledgeBase {
     this.lastSync = new Date();
   }
 
+  async fetchLiveProfesores() {
+    try {
+      const res = await fetch(`${PROFESORES_BASE_URL}/profesores`, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          this.profesores = data;
+          this.serviceErrors.profesores = null;
+        }
+      }
+    } catch (e) {
+      console.warn('[KnowledgeBase] Error en consulta en vivo a Profesores:', e.message);
+    }
+    return this.profesores;
+  }
+
+  async fetchLivePokemons() {
+    try {
+      const res = await fetch(`${POKEMON_BASE_URL}/pokemons`, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          this.pokemons = data;
+          this.serviceErrors.pokemon = null;
+        }
+      }
+    } catch (e) {
+      console.warn('[KnowledgeBase] Error en consulta en vivo a Pokemon:', e.message);
+    }
+    return this.pokemons;
+  }
+
+  async fetchLiveJujutsu() {
+    try {
+      const res = await fetch(`${JUJUTSU_BASE_URL}/characters`, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          this.characters = data;
+          this.serviceErrors.jujutsu = null;
+        }
+      }
+    } catch (e) {
+      console.warn('[KnowledgeBase] Error en consulta en vivo a Jujutsu:', e.message);
+    }
+    return this.characters;
+  }
+
+  async buscarProfesores({ departamento, nombre, profesion, termino, todos } = {}) {
+    const list = await this.fetchLiveProfesores();
+    if (!list || list.length === 0) {
+      return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
+    }
+
+    if (todos) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const depQ = (departamento || '').toLowerCase().trim();
+    const nomQ = (nombre || '').toLowerCase().trim();
+    const profQ = (profesion || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().trim();
+
+    // Si no se pasaron filtros específicos, retornar todos los registrados
+    if (!depQ && !nomQ && !profQ && !termQ) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const filtered = list.filter((p) => {
+      const pDep = (p.departamento || '').toLowerCase();
+      const pNom = (p.nombre || '').toLowerCase();
+      const pProf = (p.profesion || '').toLowerCase();
+
+      if (depQ && pDep.includes(depQ)) return true;
+      if (nomQ && pNom.includes(nomQ)) return true;
+      if (profQ && pProf.includes(profQ)) return true;
+      if (termQ && (pDep.includes(termQ) || pNom.includes(termQ) || pProf.includes(termQ))) return true;
+      return false;
+    });
+
+    return {
+      found: filtered.length > 0,
+      count: filtered.length,
+      totalInDb: list.length,
+      results: filtered,
+      emptyDb: false,
+    };
+  }
+
+  async buscarPokemons({ nombre, tipo, id, termino, todos } = {}) {
+    const list = await this.fetchLivePokemons();
+    if (!list || list.length === 0) {
+      return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
+    }
+
+    if (todos) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const nomQ = (nombre || '').toLowerCase().trim();
+    const tipoQ = (tipo || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().trim();
+    const idQ = id !== undefined && id !== null ? String(id).trim() : '';
+
+    if (!nomQ && !tipoQ && !termQ && !idQ) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const filtered = list.filter((p) => {
+      const pNom = (p.name || '').toLowerCase();
+      const pTipo = (p.type || '').toLowerCase();
+      const pId = String(p.id || '');
+
+      if (idQ && pId === idQ) return true;
+      if (nomQ && pNom.includes(nomQ)) return true;
+      if (tipoQ && pTipo.includes(tipoQ)) return true;
+      if (termQ && (pNom.includes(termQ) || pTipo.includes(termQ) || pId === termQ)) return true;
+      return false;
+    });
+
+    return {
+      found: filtered.length > 0,
+      count: filtered.length,
+      totalInDb: list.length,
+      results: filtered,
+      emptyDb: false,
+    };
+  }
+
+  async buscarPersonajesJujutsu({ nombre, grado, tecnica, termino, todos } = {}) {
+    const list = await this.fetchLiveJujutsu();
+    if (!list || list.length === 0) {
+      return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
+    }
+
+    if (todos) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const nomQ = (nombre || '').toLowerCase().trim();
+    const gradoQ = (grado || '').toLowerCase().trim();
+    const tecQ = (tecnica || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().trim();
+
+    if (!nomQ && !gradoQ && !tecQ && !termQ) {
+      return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
+    }
+
+    const filtered = list.filter((c) => {
+      const cNom = (c.name || '').toLowerCase();
+      const cGrado = (c.grade || '').toLowerCase();
+      const cTec = (c.technique || '').toLowerCase();
+
+      if (nomQ && cNom.includes(nomQ)) return true;
+      if (gradoQ && cGrado.includes(gradoQ)) return true;
+      if (tecQ && cTec.includes(tecQ)) return true;
+      if (termQ && (cNom.includes(termQ) || cGrado.includes(termQ) || cTec.includes(termQ))) return true;
+      return false;
+    });
+
+    return {
+      found: filtered.length > 0,
+      count: filtered.length,
+      totalInDb: list.length,
+      results: filtered,
+      emptyDb: false,
+    };
+  }
+
   getSuggestedQuestions() {
     const suggestions = [];
 
