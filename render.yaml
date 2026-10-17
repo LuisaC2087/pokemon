@@ -35,6 +35,25 @@ services:
         sync: false
 
   - type: web
+    name: chat-ia-node
+    env: node
+    plan: free
+    rootDir: microservices/chat-ia-node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: POKEMON_SERVICE_URL
+        value: https://pokemon-node-ueas.onrender.com
+      - key: JUJUTSU_SERVICE_URL
+        value: https://anime-python-ueas.onrender.com
+      - key: PROFESORES_SERVICE_URL
+        value: https://profesores-node-ueas.onrender.com
+
+  - type: web
     name: pokemon-frontend
     runtime: static
     buildCommand: npm install && npx expo export -p web

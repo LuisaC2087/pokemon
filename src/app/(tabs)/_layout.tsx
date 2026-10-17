@@ -99,6 +99,22 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="chat"
+        options={{
+          title: "Chat IA",
+          tabBarActiveTintColor: "#64ffda",
+
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="chatbubble-ellipses"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="profesores-details"
         options={{ href: null }}
       />
