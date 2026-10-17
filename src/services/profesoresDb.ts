@@ -232,6 +232,7 @@ export async function queueUpdateProfesor(profesor: ProfesorLocal): Promise<void
  * Envía todas las operaciones locales pendientes (INSERT, UPDATE, DELETE) al servidor.
  */
 export async function processSyncQueue(baseUrl: string): Promise<number> {
+  const database = await getDb();
   const queue = await getSyncQueue();
   let processed = 0;
 
@@ -266,7 +267,13 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           body: item.payload,
           signal: AbortSignal.timeout(6000),
         });
-        if (res.ok || res.status === 404) {
+        if (res.ok) {
+          await removeQueueItem(item.id);
+          processed++;
+        } else if (res.status === 404) {
+          // Si el servidor respondió 404 (el profesor fue borrado en la nube antes o durante la edición):
+          // Se borra de la base de datos local para que no quede huérfano y se retira de la cola
+          await database.runAsync('DELETE FROM profesores WHERE id = ?', item.entity_id);
           await removeQueueItem(item.id);
           processed++;
         }
@@ -368,8 +375,8 @@ export async function syncProfesoresFromCloud(
   }
 
   // 3. Eliminar localmente registros que hayan sido borrados en la nube por otros clientes
-  // (siempre y cuando no sea un INSERT local que aún esté en la cola de envío)
-  if (cloudIds.size > 0 && localList.length > 0) {
+  // (funciona incluso si se borraron todos los registros en la nube y el array viene vacío)
+  if (Array.isArray(cloudProfesores) && localList.length > 0) {
     const toDelete = localList.filter((p) => !cloudIds.has(p.id) && !pendingMutations.has(p.id));
     if (toDelete.length > 0) {
       const placeholders = toDelete.map(() => '?').join(',');

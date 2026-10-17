@@ -269,7 +269,13 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           body: item.payload,
           signal: AbortSignal.timeout(6000),
         });
-        if (res.ok || res.status === 404) {
+        if (res.ok) {
+          processed++;
+          continue;
+        } else if (res.status === 404) {
+          // El profesor fue borrado en la nube: borrar de localStorage de inmediato
+          const list = readStorage().filter((p) => p.id !== item.entity_id);
+          writeStorage(list);
           processed++;
           continue;
         }
@@ -372,8 +378,8 @@ export async function syncProfesoresFromCloud(cloudProfesores: any[]): Promise<S
     }
   }
 
-  // Eliminar los que ya no existan en la nube (a menos que tengan un INSERT pendiente)
-  if (cloudIds.size > 0 && localList.length > 0) {
+  // Eliminar los que ya no existan en la nube (funciona incluso si se vació toda la tabla en la nube)
+  if (Array.isArray(cloudProfesores) && localList.length > 0) {
     for (const key of localMap.keys()) {
       if (!cloudIds.has(key) && !pendingMutations.has(key)) {
         localMap.delete(key);
