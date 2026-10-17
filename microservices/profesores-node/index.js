@@ -12,7 +12,8 @@ const swaggerJsDoc = require('swagger-jsdoc');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // ── CONFIGURACIÓN SUPABASE ──────────────────────────────────
 const SUPABASE_URL = process.env.SUPABASE_URL;

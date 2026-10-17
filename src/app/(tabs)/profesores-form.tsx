@@ -15,6 +15,7 @@ export default function ProfesoresForm() {
   const router = useRouter();
   const { selectedProfesor, setSelectedProfesor, triggerSync } = useContext(AppContext);
   const [loading, setLoading] = useState(false);
+  const [processingImage, setProcessingImage] = useState(false);
   const isEditing = !!selectedProfesor && !!(selectedProfesor.id || selectedProfesor._id);
 
   const [formData, setFormData] = useState({
@@ -43,16 +44,78 @@ export default function ProfesoresForm() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const pickImage = async () => {
+  /** Procesa el asset seleccionado y lo convierte en una URI Base64 lista para la base de datos */
+  const processAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    setProcessingImage(true);
+    try {
+      if (asset.base64) {
+        const mime = asset.mimeType || "image/jpeg";
+        handleChange("imagen_url", `data:${mime};base64,${asset.base64}`);
+        return;
+      }
+
+      // Conversión de respaldo vía Blob/FileReader (funciona en Web y Móvil)
+      const res = await fetch(asset.uri);
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          handleChange("imagen_url", reader.result);
+        }
+        setProcessingImage(false);
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.warn("Error convirtiendo imagen a Base64:", err);
+      // Respaldo con la URI directa si falla la conversión
+      handleChange("imagen_url", asset.uri);
+      setProcessingImage(false);
+    } finally {
+      if (asset.base64) setProcessingImage(false);
+    }
+  };
+
+  /** Seleccionar foto desde la galería del dispositivo */
+  const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return Alert.alert("Permiso denegado", "Se necesitan permisos de galería.");
+    if (status !== "granted") {
+      return Alert.alert("Permiso denegado", "Se requiere permiso para acceder a la galería de fotos.");
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.6,
+      base64: true,
     });
-    if (!result.canceled && result.assets?.[0]?.base64) {
-      handleChange("imagen_url", `data:image/jpeg;base64,${result.assets[0].base64}`);
+
+    if (!result.canceled && result.assets?.[0]) {
+      await processAsset(result.assets[0]);
     }
+  };
+
+  /** Tomar fotografía directamente con la cámara */
+  const takeWithCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      return Alert.alert("Permiso denegado", "Se requiere permiso para usar la cámara del dispositivo.");
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.6,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      await processAsset(result.assets[0]);
+    }
+  };
+
+  const removeImage = () => {
+    handleChange("imagen_url", "");
   };
 
   const handleSave = async () => {
@@ -61,14 +124,13 @@ export default function ProfesoresForm() {
     }
     setLoading(true);
 
-    // Payload con campos reducidos
     const payload = {
-      nombre:      formData.nombre.trim(),
+      nombre:       formData.nombre.trim(),
       departamento: formData.departamento.trim(),
-      profesion:   formData.profesion.trim(),
-      email:       formData.email.trim(),
-      telefono:    formData.telefono.trim(),
-      imagen_url:  formData.imagen_url,
+      profesion:    formData.profesion.trim(),
+      email:        formData.email.trim(),
+      telefono:     formData.telefono.trim(),
+      imagen_url:   formData.imagen_url,
     };
 
     try {
@@ -80,16 +142,20 @@ export default function ProfesoresForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Error al guardar");
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || "Error al guardar el profesor en la base de datos");
+      }
 
       Alert.alert(
         "Éxito",
-        `Profesor ${isEditing ? "actualizado" : "creado"}`,
+        `Profesor ${isEditing ? "actualizado" : "creado"} correctamente en la base de datos.`,
         [{
           text: "OK",
           onPress: async () => {
             setSelectedProfesor(null);
-            await triggerSync(); // sincronizar inmediatamente después de guardar
+            await triggerSync();
             router.push("/(tabs)/profesores");
           },
         }]
@@ -122,32 +188,62 @@ export default function ProfesoresForm() {
         <BlurView intensity={30} tint="dark" style={styles.glassCard}>
           <Text style={styles.title}>{isEditing ? "Editar Profesor" : "Nuevo Profesor"}</Text>
 
-          {/* Imagen */}
+          {/* ── SECCIÓN DE IMAGEN DEL DISPOSITIVO ── */}
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Foto del Profesor</Text>
-            <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
-              <Text style={styles.imagePickerText}>📷 Seleccionar imagen</Text>
-            </TouchableOpacity>
+            <Text style={styles.label}>Foto del Profesor (Desde el Dispositivo)</Text>
+
+            <View style={styles.imageButtonsRow}>
+              <TouchableOpacity style={styles.actionPickButton} onPress={pickFromGallery}>
+                <Text style={styles.actionPickText}>🖼️ Galería</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionPickButton} onPress={takeWithCamera}>
+                <Text style={styles.actionPickText}>📷 Cámara</Text>
+              </TouchableOpacity>
+            </View>
+
+            {processingImage && (
+              <View style={styles.processingBox}>
+                <ActivityIndicator size="small" color="#64ffda" />
+                <Text style={styles.processingText}>Procesando imagen...</Text>
+              </View>
+            )}
+
             {formData.imagen_url ? (
-              <Image source={{ uri: formData.imagen_url }} style={styles.previewImage} />
+              <View style={styles.previewContainer}>
+                <Image source={{ uri: formData.imagen_url }} style={styles.previewImage} />
+                <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                  <Text style={styles.removeImageText}>✕ Quitar foto</Text>
+                </TouchableOpacity>
+              </View>
             ) : null}
+
+            {/* Alternativa: ingresar URL directamente si no se toma foto */}
+            <TextInput
+              style={[styles.input, { marginTop: 8, fontSize: 13 }]}
+              value={formData.imagen_url.startsWith("data:") ? "(Imagen en Base64 cargada desde el dispositivo)" : formData.imagen_url}
+              editable={!formData.imagen_url.startsWith("data:")}
+              onChangeText={(t) => handleChange("imagen_url", t)}
+              placeholder="O pega aquí una URL de imagen (opcional)"
+              placeholderTextColor="#777"
+              autoCapitalize="none"
+            />
           </View>
 
           <Text style={styles.sectionTitle}>Datos Personales</Text>
-          <InputField label="Nombre *" field="nombre" placeholder="Ej: Ana García" />
-          <InputField label="Departamento *" field="departamento" placeholder="Ej: Sistemas" />
-          <InputField label="Profesión" field="profesion" placeholder="Ej: Ingeniera de Software" />
+          <InputField label="Nombre *" field="nombre" placeholder="Ej: Dra. Carmen Morales" />
+          <InputField label="Departamento *" field="departamento" placeholder="Ej: Ciencias Básicas" />
+          <InputField label="Profesión" field="profesion" placeholder="Ej: Docente Titular" />
 
           <Text style={styles.sectionTitle}>Contacto</Text>
           <InputField label="Email" field="email" placeholder="correo@ejemplo.com" keyboardType="email-address" />
-          <InputField label="Teléfono" field="telefono" placeholder="3000000000" keyboardType="phone-pad" />
+          <InputField label="Teléfono" field="telefono" placeholder="+57 300 1234567" keyboardType="phone-pad" />
 
           {loading ? (
             <ActivityIndicator size="large" color="#64ffda" style={{ marginTop: 20 }} />
           ) : (
             <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
               <Text style={styles.saveButtonText}>
-                {isEditing ? "Actualizar Profesor" : "Guardar Profesor"}
+                {isEditing ? "Actualizar Profesor" : "Guardar Profesor en BD"}
               </Text>
             </TouchableOpacity>
           )}
@@ -190,16 +286,57 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 12, fontSize: 15,
     borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
   },
-  imagePickerButton: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-    padding: 14, borderRadius: 10, alignItems: "center",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.3)", borderStyle: "dashed",
+  imageButtonsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
   },
-  imagePickerText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
+  actionPickButton: {
+    flex: 1,
+    backgroundColor: "rgba(100, 255, 218, 0.15)",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(100, 255, 218, 0.35)",
+  },
+  actionPickText: {
+    color: "#64ffda",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  processingBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 8,
+    gap: 8,
+  },
+  processingText: {
+    color: "#64ffda",
+    fontSize: 12,
+  },
+  previewContainer: {
+    alignItems: "center",
+    marginVertical: 10,
+  },
   previewImage: {
-    width: 100, height: 100, borderRadius: 50,
-    alignSelf: "center", marginTop: 12,
+    width: 120, height: 120, borderRadius: 60,
     borderWidth: 2, borderColor: "#64ffda",
+  },
+  removeImageButton: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: "rgba(239, 68, 68, 0.2)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.4)",
+  },
+  removeImageText: {
+    color: "#f87171",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   saveButton: {
     backgroundColor: "rgba(46,204,113,0.85)",
