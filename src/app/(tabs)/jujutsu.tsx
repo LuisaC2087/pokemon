@@ -102,13 +102,23 @@ export default function Anime() {
         <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#10b981" : "#ef4444" }]} />
       </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Buscar personaje..."
-        placeholderTextColor="#64748b"
-        value={search}
-        onChangeText={handleSearch}
-      />
+      <View style={styles.searchWrapper}>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar personaje por nombre..."
+          placeholderTextColor="#64748b"
+          value={search}
+          onChangeText={handleSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearSearchBtn}
+            onPress={() => handleSearch("")}
+          >
+            <Text style={styles.clearSearchText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ alignItems: 'center' }}>
@@ -145,7 +155,28 @@ export default function Anime() {
           </TouchableOpacity>
         ))}
         {!loading && characters.length === 0 && (
-          <Text style={styles.empty}>No se encontraron personajes</Text>
+          <BlurView intensity={25} tint="dark" style={styles.alertCard}>
+            <Text style={styles.alertIcon}>⚠️</Text>
+            <View style={styles.alertBadge}>
+              <Text style={styles.alertBadgeText}>AVISO DE BASE DE DATOS</Text>
+            </View>
+            <Text style={styles.alertTitle}>Personaje no encontrado</Text>
+            <Text style={styles.alertDesc}>
+              No se encontró ningún hechicero en la base de datos que coincida con{" "}
+              {search.trim().length > 0 ? `"${search}"` : `el filtro de grado "${selectedGrade}"`}.
+            </Text>
+            <TouchableOpacity
+              style={styles.alertButton}
+              onPress={() => {
+                setSearch("");
+                setSelectedGrade("Todos");
+                setDomainOnly(false);
+                loadAll();
+              }}
+            >
+              <Text style={styles.alertButtonText}>🔄 Restablecer filtros</Text>
+            </TouchableOpacity>
+          </BlurView>
         )}
       </ScrollView>
     </LinearGradient>
@@ -157,15 +188,32 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 10 },
   header: { color: "#f8fafc", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
   statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
+  searchWrapper: { position: "relative", marginBottom: 10 },
   input: {
     backgroundColor: "rgba(255,255,255,0.07)",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 10,
+    paddingRight: 40,
     fontSize: 16,
     color: "#f8fafc",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+  },
+  clearSearchBtn: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearSearchText: {
+    color: "#e0e7ff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   domainBtn: {
     backgroundColor: "rgba(255,255,255,0.06)",
@@ -221,5 +269,40 @@ const styles = StyleSheet.create({
   name: { color: "#f8fafc", fontSize: 20, fontWeight: "bold" },
   grade: { color: "#a5b4fc", fontSize: 14, marginTop: 4, fontWeight: "600" },
   domain: { color: "#cbd5e1", fontSize: 12, marginTop: 4, fontStyle: "italic", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 2 },
+
+  // Alerta cuando no se encuentra en la base de datos
+  alertCard: {
+    marginVertical: 20,
+    padding: 24,
+    borderRadius: 20,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 171, 0, 0.35)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    overflow: "hidden",
+  },
+  alertIcon: { fontSize: 40, marginBottom: 10 },
+  alertBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    backgroundColor: "rgba(255, 171, 0, 0.15)",
+    borderColor: "rgba(255, 171, 0, 0.4)",
+  },
+  alertBadgeText: { color: "#ffab00", fontSize: 11, fontWeight: "bold", letterSpacing: 0.8 },
+  alertTitle: { color: "#f8fafc", fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 6 },
+  alertDesc: { color: "#cbd5e1", fontSize: 13, textAlign: "center", lineHeight: 19, marginBottom: 16 },
+  alertButton: {
+    backgroundColor: "rgba(99, 102, 241, 0.25)",
+    borderWidth: 1,
+    borderColor: "#818cf8",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  alertButtonText: { color: "#c7d2fe", fontWeight: "bold", fontSize: 13 },
   empty: { color: "#94a3b8", textAlign: "center", marginTop: 30, fontSize: 16 },
 });

@@ -337,7 +337,7 @@ app.get('/profesores/:id', async (req, res, next) => {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Profesor no encontrado' });
+    if (!data) return res.status(404).json({ error: 'Aviso: No se encontró ningún profesor con ese ID en la base de datos' });
 
     res.json(data);
   } catch (err) {
@@ -430,7 +430,7 @@ app.put('/profesores/:id', async (req, res, next) => {
       .maybeSingle();
 
     if (checkError) throw checkError;
-    if (!actual) return res.status(404).json({ error: 'Profesor no encontrado' });
+    if (!actual) return res.status(404).json({ error: 'Aviso: No se encontró el profesor en la base de datos para actualizar' });
 
     const datosActualizados = limpiarDatosProfesor(req.body, actual);
 
@@ -483,7 +483,7 @@ app.delete('/profesores/:id', async (req, res, next) => {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Profesor no encontrado' });
+    if (!data) return res.status(404).json({ error: 'Aviso: No se encontró el profesor en la base de datos para eliminar' });
 
     res.json({ mensaje: 'Profesor eliminado exitosamente', id });
   } catch (err) {

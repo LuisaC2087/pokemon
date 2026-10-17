@@ -29,10 +29,19 @@ export default function ProfesoresDetails() {
   if (!p) {
     return (
       <LinearGradient colors={["#1a2a6c", "#112240", "#0a192f"]} style={styles.center}>
-        <Text style={styles.errorText}>No se ha seleccionado ningún Profesor</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push("/(tabs)/profesores")}>
-          <Text style={styles.backText}>Volver</Text>
-        </TouchableOpacity>
+        <BlurView intensity={30} tint="dark" style={styles.notFoundCard}>
+          <Text style={styles.notFoundIcon}>⚠️</Text>
+          <View style={styles.notFoundBadge}>
+            <Text style={styles.notFoundBadgeText}>AVISO: REGISTRO NO ENCONTRADO</Text>
+          </View>
+          <Text style={styles.notFoundTitle}>Profesor no encontrado</Text>
+          <Text style={styles.notFoundDesc}>
+            No se encontró el registro solicitado en la base de datos local ni en la nube. Es posible que haya sido eliminado o no exista.
+          </Text>
+          <TouchableOpacity style={styles.notFoundBtn} onPress={() => router.push("/(tabs)/profesores")}>
+            <Text style={styles.notFoundBtnText}>← Volver a la lista de Profesores</Text>
+          </TouchableOpacity>
+        </BlurView>
       </LinearGradient>
     );
   }
@@ -207,4 +216,39 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(255,255,255,0.25)",
   },
   backText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+
+  // Not Found Alert Card
+  notFoundCard: {
+    margin: 20,
+    padding: 26,
+    borderRadius: 20,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 171, 0, 0.4)",
+    backgroundColor: "rgba(17, 34, 64, 0.75)",
+    overflow: "hidden",
+    maxWidth: 420,
+  },
+  notFoundIcon: { fontSize: 44, marginBottom: 12 },
+  notFoundBadge: {
+    backgroundColor: "rgba(255, 171, 0, 0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 171, 0, 0.4)",
+  },
+  notFoundBadgeText: { color: "#ffab00", fontSize: 11, fontWeight: "bold", letterSpacing: 0.8 },
+  notFoundTitle: { color: "#fff", fontSize: 20, fontWeight: "bold", textAlign: "center", marginBottom: 8 },
+  notFoundDesc: { color: "#ccd6f6", fontSize: 14, textAlign: "center", lineHeight: 20, marginBottom: 20 },
+  notFoundBtn: {
+    backgroundColor: "rgba(100, 255, 218, 0.15)",
+    borderWidth: 1,
+    borderColor: "#64ffda",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  notFoundBtnText: { color: "#64ffda", fontSize: 14, fontWeight: "bold" },
 });

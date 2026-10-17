@@ -107,13 +107,20 @@ export default function Pokemon() {
         <View style={[styles.statusDot, { backgroundColor: serviceStatus === "ok" ? "#4CAF50" : "#F44336" }]} />
       </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Buscar Pokémon..."
-        placeholderTextColor="#aaa"
-        value={search}
-        onChangeText={handleSearch}
-      />
+      <View style={styles.searchWrapper}>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar Pokémon por nombre..."
+          placeholderTextColor="#aaa"
+          value={search}
+          onChangeText={handleSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity style={styles.clearSearchBtn} onPress={() => handleSearch("")}>
+            <Text style={styles.clearSearchText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ alignItems: 'center' }}>
@@ -147,7 +154,26 @@ export default function Pokemon() {
           </TouchableOpacity>
         ))}
         {!loading && pokemons.length === 0 && (
-          <Text style={styles.empty}>No se encontraron Pokémon</Text>
+          <BlurView intensity={25} tint="dark" style={styles.alertCard}>
+            <Text style={styles.alertIcon}>⚠️</Text>
+            <View style={styles.alertBadge}>
+              <Text style={styles.alertBadgeText}>AVISO DE BASE DE DATOS</Text>
+            </View>
+            <Text style={styles.alertTitle}>Pokémon no encontrado</Text>
+            <Text style={styles.alertDesc}>
+              No se encontró ningún Pokémon en la base de datos que coincida con{" "}
+              {search.trim().length > 0 ? `"${search}"` : `el filtro de tipo "${selectedType}"`}.
+            </Text>
+            <TouchableOpacity
+              style={styles.alertButton}
+              onPress={() => {
+                setSearch("");
+                handleTypeFilter("Todos");
+              }}
+            >
+              <Text style={styles.alertButtonText}>🔄 Restablecer búsqueda y filtros</Text>
+            </TouchableOpacity>
+          </BlurView>
         )}
       </ScrollView>
     </LinearGradient>
@@ -159,15 +185,32 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 10 },
   header: { color: "#fff", fontSize: 32, fontWeight: "bold", textAlign: "center", textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 1, height: 1}, textShadowRadius: 3 },
   statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
+  searchWrapper: { position: "relative", marginBottom: 10 },
   input: {
     backgroundColor: "rgba(255,255,255,0.15)",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 10,
+    paddingRight: 40,
     fontSize: 16,
     color: "#fff",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.3)",
+  },
+  clearSearchBtn: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearSearchText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   filterContainer: {
     height: 55, // Fixed height container to prevent cut off
@@ -216,5 +259,40 @@ const styles = StyleSheet.create({
   image: { width: 80, height: 80, resizeMode: "contain" },
   name: { color: "#fff", fontSize: 20, fontWeight: "bold" },
   type: { color: "#ff8a80", fontSize: 14, marginTop: 4, fontWeight: "600" },
+
+  // Alerta cuando no se encuentra en la base de datos
+  alertCard: {
+    marginVertical: 20,
+    padding: 24,
+    borderRadius: 20,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 171, 0, 0.4)",
+    backgroundColor: "rgba(60, 10, 10, 0.65)",
+    overflow: "hidden",
+  },
+  alertIcon: { fontSize: 40, marginBottom: 10 },
+  alertBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    backgroundColor: "rgba(255, 171, 0, 0.15)",
+    borderColor: "rgba(255, 171, 0, 0.4)",
+  },
+  alertBadgeText: { color: "#ffab00", fontSize: 11, fontWeight: "bold", letterSpacing: 0.8 },
+  alertTitle: { color: "#ffffff", fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 6 },
+  alertDesc: { color: "#ffcdd2", fontSize: 13, textAlign: "center", lineHeight: 19, marginBottom: 16 },
+  alertButton: {
+    backgroundColor: "rgba(227, 53, 13, 0.25)",
+    borderWidth: 1,
+    borderColor: "#ff5252",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  alertButtonText: { color: "#ff8a80", fontWeight: "bold", fontSize: 13 },
   empty: { color: "#ff8a80", textAlign: "center", marginTop: 30, fontSize: 16 },
 });

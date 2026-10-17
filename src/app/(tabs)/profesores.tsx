@@ -136,11 +136,16 @@ export default function Profesores() {
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.input}
-          placeholder="Buscar profesor..."
+          placeholder="Buscar profesor por nombre o departamento..."
           placeholderTextColor="#aaa"
           value={search}
           onChangeText={setSearch}
         />
+        {search.length > 0 && (
+          <TouchableOpacity style={styles.clearSearchBtn} onPress={() => setSearch("")}>
+            <Text style={styles.clearSearchText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
@@ -183,11 +188,53 @@ export default function Profesores() {
         ))}
 
         {filteredProfesores.length === 0 && (
-          <Text style={styles.empty}>
-            {localProfesores.length === 0
-              ? "Sin datos locales. Sincronizando..."
-              : "No se encontraron profesores"}
-          </Text>
+          <BlurView intensity={25} tint="dark" style={styles.alertCard}>
+            {search.trim().length > 0 ? (
+              <>
+                <Text style={styles.alertIcon}>🔍</Text>
+                <View style={styles.alertBadge}>
+                  <Text style={styles.alertBadgeText}>AVISO: SIN RESULTADOS</Text>
+                </View>
+                <Text style={styles.alertTitle}>Profesor no encontrado</Text>
+                <Text style={styles.alertDesc}>
+                  No se encontró ningún profesor en la base de datos que coincida con "{search}".
+                </Text>
+                <TouchableOpacity style={styles.alertButton} onPress={() => setSearch("")}>
+                  <Text style={styles.alertButtonText}>✕ Limpiar búsqueda</Text>
+                </TouchableOpacity>
+              </>
+            ) : syncState.isSyncing && localProfesores.length === 0 ? (
+              <>
+                <ActivityIndicator size="large" color="#64ffda" style={{ marginBottom: 12 }} />
+                <View style={[styles.alertBadge, { backgroundColor: "rgba(100,255,218,0.15)", borderColor: "rgba(100,255,218,0.4)" }]}>
+                  <Text style={[styles.alertBadgeText, { color: "#64ffda" }]}>BASE DE DATOS</Text>
+                </View>
+                <Text style={styles.alertTitle}>Consultando la base de datos...</Text>
+                <Text style={styles.alertDesc}>
+                  Obteniendo registros y sincronizando con el servidor en la nube.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.alertIcon}>📭</Text>
+                <View style={[styles.alertBadge, { backgroundColor: "rgba(255,171,0,0.15)", borderColor: "rgba(255,171,0,0.4)" }]}>
+                  <Text style={[styles.alertBadgeText, { color: "#ffab00" }]}>AVISO DE BASE DE DATOS</Text>
+                </View>
+                <Text style={styles.alertTitle}>Base de datos sin registros</Text>
+                <Text style={styles.alertDesc}>
+                  No se encontró ningún profesor almacenado en la base de datos actualmente.
+                </Text>
+                <View style={styles.alertActionsRow}>
+                  <TouchableOpacity style={styles.alertButton} onPress={handleCreate}>
+                    <Text style={styles.alertButtonText}>+ Agregar Profesor</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.alertSecondaryButton} onPress={triggerSync}>
+                    <Text style={styles.alertSecondaryButtonText}>🔄 Sincronizar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </BlurView>
         )}
       </ScrollView>
     </LinearGradient>
@@ -238,12 +285,29 @@ const styles = StyleSheet.create({
   errorText: { color: "#ff6b6b", fontSize: 12, marginTop: 4 },
 
   // Search
-  searchContainer: { marginBottom: 10 },
+  searchContainer: { marginBottom: 10, position: "relative" },
   input: {
     backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: 12, padding: 12,
+    paddingRight: 40,
     fontSize: 15, color: "#fff",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.25)",
+  },
+  clearSearchBtn: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearSearchText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 
   // Buttons
@@ -291,5 +355,51 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   moreButtonText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
+
+  // Empty / Not Found Alert
+  alertCard: {
+    marginVertical: 20,
+    padding: 24,
+    borderRadius: 20,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 171, 0, 0.35)",
+    backgroundColor: "rgba(17, 34, 64, 0.65)",
+    overflow: "hidden",
+  },
+  alertIcon: { fontSize: 40, marginBottom: 10 },
+  alertBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    backgroundColor: "rgba(255, 171, 0, 0.15)",
+    borderColor: "rgba(255, 171, 0, 0.4)",
+  },
+  alertBadgeText: { color: "#ffab00", fontSize: 11, fontWeight: "bold", letterSpacing: 0.8 },
+  alertTitle: { color: "#ffffff", fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 6 },
+  alertDesc: { color: "#ccd6f6", fontSize: 13, textAlign: "center", lineHeight: 19, marginBottom: 16 },
+  alertActionsRow: { flexDirection: "row", gap: 10, marginTop: 4 },
+  alertButton: {
+    backgroundColor: "rgba(100, 255, 218, 0.15)",
+    borderWidth: 1,
+    borderColor: "#64ffda",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  alertButtonText: { color: "#64ffda", fontWeight: "bold", fontSize: 13 },
+  alertSecondaryButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  alertSecondaryButtonText: { color: "#ccd6f6", fontWeight: "600", fontSize: 13 },
   empty: { color: "#8892b0", textAlign: "center", marginTop: 40, fontSize: 15 },
 });
