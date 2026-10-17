@@ -190,24 +190,41 @@ Mensaje del usuario: "${trimmedMessage}"`;
       }
 
       // PASO 5 Y 6: Enviar resultados al modelo para formular la respuesta
-      // Si no existen resultados pertinentes, informar que no esta disponible sin improvisar
-      let instructionForGemini = '';
+      // Si el microservicio NO encuentra nada, NO le pregunta a la IA
+      if (dbData && (!dbData.found || dbData.results.length === 0)) {
+        let noDataReply = 'La informacion solicitada no se encuentra disponible en la base de datos de los microservicios.';
+        if (toolName === 'buscar_profesores') {
+          const dep = toolDecision.args?.departamento;
+          noDataReply = dep
+            ? `No se encontraron profesores registrados en el departamento de ${dep} en la base de datos actual del microservicio.`
+            : 'No se encontraron profesores registrados en la base de datos actual del microservicio.';
+        } else if (toolName === 'buscar_pokemons') {
+          const nom = toolDecision.args?.nombre || toolDecision.args?.termino;
+          noDataReply = nom
+            ? `El pokemon "${nom}" no se encuentra registrado en la base de datos del microservicio.`
+            : 'No se encontraron registros de Pokemon en la base de datos del microservicio.';
+        } else if (toolName === 'buscar_personajes_jujutsu') {
+          const nom = toolDecision.args?.nombre || toolDecision.args?.termino;
+          noDataReply = nom
+            ? `El personaje "${nom}" no se encuentra registrado en la base de datos de Jujutsu Kaisen.`
+            : 'No se encontraron personajes de Jujutsu Kaisen en la base de datos del microservicio.';
+        }
 
-      if (dbData) {
-        if (!dbData.found || dbData.results.length === 0) {
-          // PASO 6: No existen resultados pertinentes en la base de datos
-          instructionForGemini = `
-Se consulto la base de datos oficial del microservicio en tiempo real para la herramienta "${toolName}".
-RESULTADO DE LA BASE DE DATOS: 0 registros encontrados (informacion no disponible en la base de datos actual).
-REGLA OBLIGATORIA:
-- Informa de manera respetuosa, clara y profesional que la informacion solicitada no se encuentra registrada en la base de datos de los microservicios.
-- TIENES ESTRICTAMENTE PROHIBIDO improvisar, inventar datos o asumir nombres.
-- Sugiere amablemente que consultas pertinentes si se pueden realizar sobre los microservicios del sistema.
-- NO uses ningun emoji.
-`.trim();
-        } else {
-          // PASO 5: Si existen resultados, enviar los registros para que formule la respuesta y la enriquezca
-          instructionForGemini = `
+        console.log(`[Chat-IA] El microservicio devolvio 0 resultados para ${toolName}. Respondiendo directamente sin consultar a la IA.`);
+
+        return res.json({
+          reply: stripEmojis(noDataReply),
+          suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
+          outOfScope: true,
+          provider: 'system_database',
+          toolExecuted: toolName
+        });
+      }
+
+      // Si SI existen resultados en la base de datos, enviar los datos a la IA para que enriquezca la respuesta
+      let instructionForGemini = '';
+      if (dbData && dbData.found && dbData.results.length > 0) {
+        instructionForGemini = `
 Se consulto la base de datos oficial del microservicio en tiempo real para la herramienta "${toolName}".
 REGISTROS OFICIALES ENCONTRADOS (${dbData.results.length} registros verificados en la base de datos):
 ${JSON.stringify(dbData.results, null, 2)}
@@ -218,7 +235,6 @@ INSTRUCCION:
 - Manten la fidelidad a los datos provistos por el microservicio.
 - NO uses ningun emoji en tu respuesta.
 `.trim();
-        }
       } else {
         // Consulta general o fuera de los 3 microservicios
         instructionForGemini = `
