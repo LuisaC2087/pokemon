@@ -113,8 +113,11 @@ app.post('/chat', async (req, res) => {
 
     try {
       const systemPrompt = knowledgeBase.buildSystemPrompt();
-      const candidateModels = [GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash']
-        .filter((val, idx, arr) => arr.indexOf(val) === idx);
+      const candidateModels = [
+        GEMINI_MODEL,
+        'gemini-flash-lite-latest',
+        'gemini-flash-latest',
+      ].filter((val, idx, arr) => Boolean(val) && arr.indexOf(val) === idx);
 
       let lastError = null;
       let textResponse = null;
@@ -152,17 +155,38 @@ app.post('/chat', async (req, res) => {
           break;
         } catch (err) {
           lastError = err;
-          // Si el modelo da 404 o unsupported, intentamos con el siguiente de la lista
-          if (err.message && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('not supported'))) {
-            console.warn(`[Chat-IA] Modelo ${modelName} no disponible, intentando con siguiente modelo...`);
-            continue;
-          }
-          throw err;
+          console.warn(`[Chat-IA] Modelo ${modelName} no pudo responder (${err.message}). Intentando siguiente...`);
         }
       }
 
-      if (!textResponse && lastError) {
-        throw lastError;
+      // Si todos los modelos de Gemini fallaron o estan saturados, responder con datos de los microservicios
+      if (!textResponse) {
+        console.warn('[Chat-IA] Usando respuesta de contingencia basada en microservicios...');
+        const q = trimmedMessage.toLowerCase();
+        const pMatch = knowledgeBase.pokemons.find(p => q.includes(p.name.toLowerCase()));
+        const cMatch = knowledgeBase.characters.find(c => q.includes(c.name.toLowerCase()));
+        const profMatch = knowledgeBase.profesores.find(p => q.includes(p.nombre.toLowerCase()));
+
+        if (pMatch) {
+          textResponse = `Pokemon ${pMatch.name}: Tipo ${pMatch.type}, Habilidad: ${pMatch.ability || 'N/A'}, HP: ${pMatch.hp || 'N/A'}, Altura: ${pMatch.height || 'N/A'}, Peso: ${pMatch.weight || 'N/A'}.`;
+        } else if (cMatch) {
+          textResponse = `Personaje ${cMatch.name}: Grado: ${cMatch.grade || 'N/A'}, Tecnica maldita: ${cMatch.technique || 'N/A'}, Expansion: ${cMatch.domain_expansion || 'N/A'}.`;
+        } else if (profMatch) {
+          textResponse = `Profesor ${profMatch.nombre}: Departamento: ${profMatch.departamento || 'N/A'}, Profesion: ${profMatch.profesion || 'N/A'}, Email: ${profMatch.email || 'N/A'}.`;
+        } else if (q.includes('pokemon')) {
+          const list = knowledgeBase.pokemons.map(p => p.name).join(', ');
+          textResponse = `Pokemon registrados en el microservicio: ${list || 'No hay datos disponibles'}.`;
+        } else if (q.includes('jujutsu') || q.includes('personaje')) {
+          const list = knowledgeBase.characters.map(c => c.name).join(', ');
+          textResponse = `Personajes de Jujutsu Kaisen registrados: ${list || 'No hay datos disponibles'}.`;
+        } else if (q.includes('profesor')) {
+          const list = knowledgeBase.profesores.map(p => p.nombre).join(', ');
+          textResponse = knowledgeBase.profesores.length > 0 
+            ? `Profesores registrados: ${list}.`
+            : 'El microservicio de profesores no tiene registros disponibles en este momento.';
+        } else {
+          textResponse = 'Solo puedo responder preguntas sobre los microservicios de Pokemon, Jujutsu Kaisen y Profesores. Puedes consultarme sobre los datos de cualquier personaje, pokemon o profesor registrado.';
+        }
       }
 
       const outOfScope = textResponse.toLowerCase().includes('fuera de') || 
@@ -176,12 +200,12 @@ app.post('/chat', async (req, res) => {
         outOfScope,
         provider: 'gemini'
       });
-    } catch (geminiError) {
-      console.error('[Chat-IA] Error en llamada a Gemini API:', geminiError.message);
-      return res.status(502).json({
-        error: 'Error al comunicarse con la Inteligencia Artificial de Gemini.',
-        reply: 'El servicio de Inteligencia Artificial no pudo procesar la solicitud en este momento. Por favor intente nuevamente mas tarde.',
-        details: geminiError.message
+    } catch (err) {
+      console.error('[Chat-IA] Error inesperado en /chat:', err.message);
+      return res.status(500).json({
+        error: 'Error interno en el servicio de chat',
+        reply: 'Ocurrio un inconveniente al procesar la solicitud. Por favor intenta nuevamente.',
+        details: err.message
       });
     }
 

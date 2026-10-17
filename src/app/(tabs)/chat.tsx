@@ -13,11 +13,49 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
-const CHAT_SERVICE_URL = Platform.select({
-  android: 'http://10.0.2.2:3003',
-  default: 'http://localhost:3003',
-});
+function getChatEndpoints(): string[] {
+  const endpoints: string[] = [];
+  try {
+    const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoGo?.debuggerHost;
+    if (hostUri) {
+      const ip = hostUri.split(':')[0];
+      if (ip && ip !== 'localhost') {
+        endpoints.push(`http://${ip}:3003`);
+      }
+    }
+  } catch {}
+
+  // IP local de la maquina en la red Wi-Fi
+  endpoints.push('http://172.24.105.23:3003');
+
+  if (Platform.OS === 'android') {
+    endpoints.push('http://10.0.2.2:3003');
+  }
+  endpoints.push('http://localhost:3003');
+  endpoints.push('http://127.0.0.1:3003');
+
+  return endpoints.filter((val, idx, arr) => arr.indexOf(val) === idx);
+}
+
+let activeChatBase = getChatEndpoints()[0];
+
+async function fetchChatEndpoint(path: string, options?: RequestInit): Promise<Response> {
+  const candidates = [activeChatBase, ...getChatEndpoints().filter((e) => e !== activeChatBase)];
+  let lastError: any = null;
+
+  for (const base of candidates) {
+    try {
+      const res = await fetch(`${base}${path}`, options);
+      activeChatBase = base;
+      return res;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('No se pudo establecer conexion con el microservicio de chat');
+}
 
 interface Message {
   id: string;
@@ -46,7 +84,7 @@ export default function ChatScreen() {
 
   const checkHealth = useCallback(async () => {
     try {
-      const res = await fetch(`${CHAT_SERVICE_URL}/health`, { signal: AbortSignal.timeout(3500) });
+      const res = await fetchChatEndpoint('/health', { signal: AbortSignal.timeout(4000) });
       if (res.ok) {
         setServiceStatus('ok');
       } else {
@@ -91,25 +129,36 @@ export default function ChatScreen() {
         content: m.content,
       }));
 
-      const res = await fetch(`${CHAT_SERVICE_URL}/chat`, {
+      const res = await fetchChatEndpoint('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history }),
+        signal: AbortSignal.timeout(30000),
       });
 
-      if (!res.ok) {
-        throw new Error(`Error ${res.status}`);
-      }
+      const data = await res.json().catch(() => null);
 
-      const data = await res.json();
+      if (!res.ok) {
+        const errorContent =
+          (data && (data.reply || data.error)) || `Error del servidor (${res.status})`;
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: errorContent,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        setServiceStatus('error');
+        return;
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.reply || 'Sin respuesta',
+        content: data?.reply || 'Sin respuesta',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        suggestions: data.suggestions,
-        outOfScope: data.outOfScope,
+        suggestions: data?.suggestions,
+        outOfScope: data?.outOfScope,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
