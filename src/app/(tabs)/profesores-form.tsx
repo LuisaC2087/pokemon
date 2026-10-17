@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import {
   View, Text, TextInput, StyleSheet, ScrollView,
   TouchableOpacity, Alert, ActivityIndicator, Image,
+  KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -10,6 +11,40 @@ import { LinearGradient } from "expo-linear-gradient";
 import { AppContext } from "../../context/AppContext";
 
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
+
+interface InputFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: "default" | "email-address" | "phone-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+}
+
+// Se define InputField FUERA del componente para evitar que React desmonte el TextInput en cada pulsación de tecla
+function InputField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = "default",
+  autoCapitalize = "sentences",
+}: InputFieldProps) {
+  return (
+    <View style={styles.formGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#8892b0"
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+      />
+    </View>
+  );
+}
 
 export default function ProfesoresForm() {
   const router = useRouter();
@@ -44,7 +79,7 @@ export default function ProfesoresForm() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  /** Procesa el asset seleccionado y lo convierte en una URI Base64 lista para la base de datos */
+  /** Procesa el asset de imagen y lo convierte en Base64 seguro para la base de datos */
   const processAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     setProcessingImage(true);
     try {
@@ -54,7 +89,7 @@ export default function ProfesoresForm() {
         return;
       }
 
-      // Conversión de respaldo vía Blob/FileReader (funciona en Web y Móvil)
+      // Conversión vía Blob/FileReader en navegadores web o entornos sin base64 directo
       const res = await fetch(asset.uri);
       const blob = await res.blob();
       const reader = new FileReader();
@@ -66,8 +101,7 @@ export default function ProfesoresForm() {
       };
       reader.readAsDataURL(blob);
     } catch (err) {
-      console.warn("Error convirtiendo imagen a Base64:", err);
-      // Respaldo con la URI directa si falla la conversión
+      console.warn("Error procesando imagen:", err);
       handleChange("imagen_url", asset.uri);
       setProcessingImage(false);
     } finally {
@@ -148,90 +182,110 @@ export default function ProfesoresForm() {
     }
   };
 
-  const InputField = ({ label, field, placeholder, keyboardType = "default" }: any) => (
-    <View style={styles.formGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={(formData as any)[field]}
-        onChangeText={(t) => handleChange(field, t)}
-        placeholder={placeholder}
-        placeholderTextColor="#aaa"
-        keyboardType={keyboardType}
-        autoCapitalize={field === "email" ? "none" : "sentences"}
-      />
-    </View>
-  );
-
   return (
     <LinearGradient colors={["#1a2a6c", "#112240", "#0a192f"]} style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-        <BlurView intensity={30} tint="dark" style={styles.glassCard}>
-          <Text style={styles.title}>{isEditing ? "Editar Profesor" : "Nuevo Profesor"}</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <BlurView intensity={30} tint="dark" style={styles.glassCard}>
+            <Text style={styles.title}>{isEditing ? "Editar Profesor" : "Nuevo Profesor"}</Text>
 
-          {/* ── SECCIÓN DE IMAGEN DEL DISPOSITIVO ── */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Foto del Profesor (Desde el Dispositivo)</Text>
+            {/* ── SECCIÓN DE IMAGEN DEL DISPOSITIVO ── */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Foto del Profesor (Desde el Dispositivo)</Text>
 
-            <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
-              <Text style={styles.imagePickerText}>🖼️ Seleccionar foto del dispositivo</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
+                <Text style={styles.imagePickerText}>🖼️ Seleccionar foto del dispositivo</Text>
+              </TouchableOpacity>
 
-            {processingImage && (
-              <View style={styles.processingBox}>
-                <ActivityIndicator size="small" color="#64ffda" />
-                <Text style={styles.processingText}>Procesando imagen...</Text>
-              </View>
-            )}
+              {processingImage && (
+                <View style={styles.processingBox}>
+                  <ActivityIndicator size="small" color="#64ffda" />
+                  <Text style={styles.processingText}>Procesando imagen...</Text>
+                </View>
+              )}
 
-            {formData.imagen_url ? (
-              <View style={styles.previewContainer}>
-                <Image source={{ uri: formData.imagen_url }} style={styles.previewImage} />
-                <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
-                  <Text style={styles.removeImageText}>✕ Quitar foto</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
+              {formData.imagen_url ? (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: formData.imagen_url }} style={styles.previewImage} />
+                  <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                    <Text style={styles.removeImageText}>✕ Quitar foto</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
-            {/* Alternativa: ingresar URL directamente si no se toma foto */}
-            <TextInput
-              style={[styles.input, { marginTop: 8, fontSize: 13 }]}
-              value={formData.imagen_url.startsWith("data:") ? "(Imagen en Base64 cargada desde el dispositivo)" : formData.imagen_url}
-              editable={!formData.imagen_url.startsWith("data:")}
-              onChangeText={(t) => handleChange("imagen_url", t)}
-              placeholder="O pega aquí una URL de imagen (opcional)"
-              placeholderTextColor="#777"
+              <TextInput
+                style={[styles.input, { marginTop: 8, fontSize: 13 }]}
+                value={formData.imagen_url.startsWith("data:") ? "(Imagen en Base64 cargada)" : formData.imagen_url}
+                editable={!formData.imagen_url.startsWith("data:")}
+                onChangeText={(t) => handleChange("imagen_url", t)}
+                placeholder="O pega aquí una URL de imagen (opcional)"
+                placeholderTextColor="#777"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <Text style={styles.sectionTitle}>Datos Personales</Text>
+            <InputField
+              label="Nombre *"
+              value={formData.nombre}
+              onChangeText={(t) => handleChange("nombre", t)}
+              placeholder="Ej: Dra. Carmen Morales"
+            />
+            <InputField
+              label="Departamento *"
+              value={formData.departamento}
+              onChangeText={(t) => handleChange("departamento", t)}
+              placeholder="Ej: Ciencias Básicas"
+            />
+            <InputField
+              label="Profesión"
+              value={formData.profesion}
+              onChangeText={(t) => handleChange("profesion", t)}
+              placeholder="Ej: Docente Titular"
+            />
+
+            <Text style={styles.sectionTitle}>Contacto</Text>
+            <InputField
+              label="Email"
+              value={formData.email}
+              onChangeText={(t) => handleChange("email", t)}
+              placeholder="correo@ejemplo.com"
+              keyboardType="email-address"
               autoCapitalize="none"
             />
-          </View>
+            <InputField
+              label="Teléfono"
+              value={formData.telefono}
+              onChangeText={(t) => handleChange("telefono", t)}
+              placeholder="+57 300 1234567"
+              keyboardType="phone-pad"
+            />
 
-          <Text style={styles.sectionTitle}>Datos Personales</Text>
-          <InputField label="Nombre *" field="nombre" placeholder="Ej: Dra. Carmen Morales" />
-          <InputField label="Departamento *" field="departamento" placeholder="Ej: Ciencias Básicas" />
-          <InputField label="Profesión" field="profesion" placeholder="Ej: Docente Titular" />
+            {loading ? (
+              <ActivityIndicator size="large" color="#64ffda" style={{ marginTop: 20 }} />
+            ) : (
+              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                <Text style={styles.saveButtonText}>
+                  {isEditing ? "Actualizar Profesor" : "Guardar Profesor en BD"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
-          <Text style={styles.sectionTitle}>Contacto</Text>
-          <InputField label="Email" field="email" placeholder="correo@ejemplo.com" keyboardType="email-address" />
-          <InputField label="Teléfono" field="telefono" placeholder="+57 300 1234567" keyboardType="phone-pad" />
-
-          {loading ? (
-            <ActivityIndicator size="large" color="#64ffda" style={{ marginTop: 20 }} />
-          ) : (
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.saveButtonText}>
-                {isEditing ? "Actualizar Profesor" : "Guardar Profesor en BD"}
-              </Text>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => { setSelectedProfesor(null); router.back(); }}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => { setSelectedProfesor(null); router.back(); }}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </TouchableOpacity>
-        </BlurView>
-      </ScrollView>
+          </BlurView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
