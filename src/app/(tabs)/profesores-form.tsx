@@ -76,7 +76,7 @@ export default function ProfesoresForm() {
   };
 
   /** Seleccionar foto desde la galería del dispositivo */
-  const pickFromGallery = async () => {
+  const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       return Alert.alert("Permiso denegado", "Se requiere permiso para acceder a la galería de fotos.");
@@ -84,25 +84,6 @@ export default function ProfesoresForm() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.6,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.[0]) {
-      await processAsset(result.assets[0]);
-    }
-  };
-
-  /** Tomar fotografía directamente con la cámara */
-  const takeWithCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      return Alert.alert("Permiso denegado", "Se requiere permiso para usar la cámara del dispositivo.");
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.6,
@@ -192,14 +173,9 @@ export default function ProfesoresForm() {
           <View style={styles.formGroup}>
             <Text style={styles.label}>Foto del Profesor (Desde el Dispositivo)</Text>
 
-            <View style={styles.imageButtonsRow}>
-              <TouchableOpacity style={styles.actionPickButton} onPress={pickFromGallery}>
-                <Text style={styles.actionPickText}>🖼️ Galería</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionPickButton} onPress={takeWithCamera}>
-                <Text style={styles.actionPickText}>📷 Cámara</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
+              <Text style={styles.imagePickerText}>🖼️ Seleccionar foto del dispositivo</Text>
+            </TouchableOpacity>
 
             {processingImage && (
               <View style={styles.processingBox}>
@@ -286,21 +262,16 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 12, fontSize: 15,
     borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
   },
-  imageButtonsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 8,
-  },
-  actionPickButton: {
-    flex: 1,
+  imagePickerButton: {
     backgroundColor: "rgba(100, 255, 218, 0.15)",
-    padding: 12,
+    padding: 13,
     borderRadius: 10,
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(100, 255, 218, 0.35)",
+    marginBottom: 8,
   },
-  actionPickText: {
+  imagePickerText: {
     color: "#64ffda",
     fontSize: 14,
     fontWeight: "bold",
