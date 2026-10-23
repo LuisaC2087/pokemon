@@ -245,7 +245,7 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
       if (item.action === 'DELETE') {
         const res = await fetch(`${baseUrl}/profesores/${item.entity_id}`, {
           method: 'DELETE',
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         if (res.ok || res.status === 404) {
           processed++;
@@ -256,7 +256,7 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: item.payload,
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         if (res.ok || res.status === 409) {
           processed++;
@@ -267,17 +267,23 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: item.payload,
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         if (res.ok) {
           processed++;
           continue;
         } else if (res.status === 404) {
-          // El profesor fue borrado en la nube: borrar de localStorage de inmediato
-          const list = readStorage().filter((p) => p.id !== item.entity_id);
-          writeStorage(list);
-          processed++;
-          continue;
+          // Si no existe en la nube, intentar enviarlo como creación para no perder datos
+          const postRes = await fetch(`${baseUrl}/profesores`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: item.payload,
+            signal: AbortSignal.timeout(25000),
+          });
+          if (postRes.ok || postRes.status === 409) {
+            processed++;
+            continue;
+          }
         }
       }
       remaining.push(item);
@@ -378,10 +384,10 @@ export async function syncProfesoresFromCloud(cloudProfesores: any[]): Promise<S
     }
   }
 
-  // Eliminar los que ya no existan en la nube (funciona incluso si se vació toda la tabla en la nube)
-  if (Array.isArray(cloudProfesores) && localList.length > 0) {
+  // Eliminar los que ya no existan en la nube solo si recibimos datos válidos de la nube
+  if (Array.isArray(cloudProfesores) && cloudProfesores.length > 0 && localList.length > 0) {
     for (const key of localMap.keys()) {
-      if (!cloudIds.has(key) && !pendingMutations.has(key)) {
+      if (!cloudIds.has(key) && !pendingMutations.has(key) && !pendingDeletes.has(key)) {
         localMap.delete(key);
         deleted++;
       }

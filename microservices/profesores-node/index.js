@@ -378,7 +378,7 @@ app.post('/profesores', async (req, res, next) => {
 
     const { data, error } = await db
       .from(TABLE)
-      .insert(registro)
+      .upsert(registro, { onConflict: 'id' })
       .select('*')
       .single();
 
@@ -422,22 +422,21 @@ app.put('/profesores/:id', async (req, res, next) => {
     const { id } = req.params;
     const db = getSupabase();
 
-    // Verificar existencia previa
-    const { data: actual, error: checkError } = await db
+    // Consultar existencia previa si existe
+    const { data: actual } = await db
       .from(TABLE)
       .select('*')
       .eq('id', id)
       .maybeSingle();
 
-    if (checkError) throw checkError;
-    if (!actual) return res.status(404).json({ error: 'Aviso: No se encontró el profesor en la base de datos para actualizar' });
-
-    const datosActualizados = limpiarDatosProfesor(req.body, actual);
+    const datosActualizados = {
+      id,
+      ...limpiarDatosProfesor(req.body, actual || {})
+    };
 
     const { data, error } = await db
       .from(TABLE)
-      .update(datosActualizados)
-      .eq('id', id)
+      .upsert(datosActualizados, { onConflict: 'id' })
       .select('*')
       .single();
 
@@ -475,15 +474,10 @@ app.delete('/profesores/:id', async (req, res, next) => {
     const { id } = req.params;
     const db = getSupabase();
 
-    const { data, error } = await db
+    await db
       .from(TABLE)
       .delete()
-      .eq('id', id)
-      .select('id')
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Aviso: No se encontró el profesor en la base de datos para eliminar' });
+      .eq('id', id);
 
     res.json({ mensaje: 'Profesor eliminado exitosamente', id });
   } catch (err) {

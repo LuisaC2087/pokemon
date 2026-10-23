@@ -96,7 +96,7 @@ class KnowledgeBase {
 
   async fetchLiveProfesores() {
     try {
-      const res = await fetch(`${PROFESORES_BASE_URL}/profesores`, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(`${PROFESORES_BASE_URL}/profesores`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -112,7 +112,7 @@ class KnowledgeBase {
 
   async fetchLivePokemons() {
     try {
-      const res = await fetch(`${POKEMON_BASE_URL}/pokemons`, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(`${POKEMON_BASE_URL}/pokemons`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -128,7 +128,7 @@ class KnowledgeBase {
 
   async fetchLiveJujutsu() {
     try {
-      const res = await fetch(`${JUJUTSU_BASE_URL}/characters`, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(`${JUJUTSU_BASE_URL}/characters`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -260,6 +260,167 @@ class KnowledgeBase {
       totalInDb: list.length,
       results: filtered,
       emptyDb: false,
+    };
+  }
+
+  /**
+   * Valida rigurosamente si la pregunta del usuario hace referencia a alguno de los personajes
+   * de los 3 microservicios (Pokemon, Anime Jujutsu Kaisen o Profesores).
+   * 
+   * Retorna { valid: true, toolName, dbData, category } si hace referencia y se hallan registros.
+   * Retorna { valid: false, reply, reason } si no hace referencia o no existe en la BD.
+   */
+  async validarReferenciaPersonajes(message) {
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return {
+        valid: false,
+        reply: 'No es posible procesar un mensaje vacio.',
+        reason: 'empty_message',
+      };
+    }
+
+    const raw = message.trim();
+    // Normalizar texto eliminando tildes y a minúsculas
+    const norm = raw
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    // Cargar datos en vivo de los microservicios
+    const [pokes, jujutsus, profs] = await Promise.all([
+      this.fetchLivePokemons(),
+      this.fetchLiveJujutsu(),
+      this.fetchLiveProfesores(),
+    ]);
+
+    // 1. Verificar si hace referencia a POKÉMON
+    const pokeKeywords = [
+      'pokemon', 'pokemons', 'pokedex', 'pikachu', 'charizard', 'bulbasaur', 'squirtle',
+      'tipo electrico', 'tipo fuego', 'tipo agua', 'tipo planta', 'tipo veneno'
+    ];
+    const refersToPokemonKeyword = pokeKeywords.some((kw) => norm.includes(kw));
+
+    let matchedPokemon = null;
+    if (Array.isArray(pokes)) {
+      matchedPokemon = pokes.find((p) => {
+        const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return pNorm.length >= 3 && norm.includes(pNorm);
+      });
+    }
+
+    if (refersToPokemonKeyword || matchedPokemon) {
+      const dbData = await this.buscarPokemons({
+        nombre: matchedPokemon ? matchedPokemon.name : undefined,
+        termino: raw,
+        todos: norm.includes('todos') || norm.includes('cuales') || norm.includes('listar'),
+      });
+
+      if (dbData && dbData.found && dbData.results.length > 0) {
+        return {
+          valid: true,
+          toolName: 'buscar_pokemons',
+          dbData,
+          category: 'pokemon',
+        };
+      } else {
+        return {
+          valid: false,
+          reply: 'No es posible responder a tu consulta. El personaje o Pokémon consultado no se encuentra registrado en el microservicio oficial.',
+          reason: 'pokemon_not_found',
+        };
+      }
+    }
+
+    // 2. Verificar si hace referencia a ANIME (JUJUTSU KAISEN)
+    const animeKeywords = [
+      'jujutsu', 'kaisen', 'hechicero', 'hechiceros', 'maldicion', 'maldiciones',
+      'tecnica maldita', 'expansion de dominio', 'anime', 'gojo', 'itadori', 'sukuna',
+      'megumi', 'nobara', 'nanami', 'satoru', 'yuji'
+    ];
+    const refersToAnimeKeyword = animeKeywords.some((kw) => norm.includes(kw));
+
+    let matchedJujutsu = null;
+    if (Array.isArray(jujutsus)) {
+      matchedJujutsu = jujutsus.find((c) => {
+        const cNorm = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const parts = cNorm.split(' ');
+        return parts.some((part) => part.length >= 3 && norm.includes(part));
+      });
+    }
+
+    if (refersToAnimeKeyword || matchedJujutsu) {
+      const dbData = await this.buscarPersonajesJujutsu({
+        nombre: matchedJujutsu ? matchedJujutsu.name : undefined,
+        termino: raw,
+        todos: norm.includes('todos') || norm.includes('cuales') || norm.includes('listar'),
+      });
+
+      if (dbData && dbData.found && dbData.results.length > 0) {
+        return {
+          valid: true,
+          toolName: 'buscar_personajes_jujutsu',
+          dbData,
+          category: 'jujutsu',
+        };
+      } else {
+        return {
+          valid: false,
+          reply: 'No es posible responder a tu consulta. El personaje de anime (Jujutsu Kaisen) consultado no se encuentra registrado en el microservicio oficial.',
+          reason: 'anime_character_not_found',
+        };
+      }
+    }
+
+    // 3. Verificar si hace referencia a PROFESORES
+    const profKeywords = [
+      'profesor', 'profesora', 'profesores', 'docente', 'docentes',
+      'departamento', 'catedra', 'materia', 'facultad', 'asignatura'
+    ];
+    const refersToProfKeyword = profKeywords.some((kw) => norm.includes(kw));
+
+    let matchedProf = null;
+    if (Array.isArray(profs)) {
+      matchedProf = profs.find((p) => {
+        const pNorm = (p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const parts = pNorm.split(' ');
+        return parts.some((part) => part.length >= 3 && norm.includes(part));
+      });
+    }
+
+    if (refersToProfKeyword || matchedProf) {
+      let dep = null;
+      if (norm.includes('sistema') || norm.includes('sistemas')) dep = 'Sistemas';
+      else if (norm.includes('matematica') || norm.includes('matematicas')) dep = 'Matematicas';
+      else if (norm.includes('idioma') || norm.includes('idiomas')) dep = 'Idiomas';
+
+      const dbData = await this.buscarProfesores({
+        departamento: dep,
+        nombre: matchedProf ? matchedProf.nombre : undefined,
+        termino: raw,
+        todos: norm.includes('todos') || norm.includes('cuales') || norm.includes('listar'),
+      });
+
+      if (dbData && dbData.found && dbData.results.length > 0) {
+        return {
+          valid: true,
+          toolName: 'buscar_profesores',
+          dbData,
+          category: 'profesores',
+        };
+      } else {
+        return {
+          valid: false,
+          reply: 'No es posible responder a tu consulta. El docente o profesor consultado no se encuentra registrado en el microservicio oficial.',
+          reason: 'profesor_not_found',
+        };
+      }
+    }
+
+    // 4. Si la pregunta NO hace referencia a ninguno de los 3 microservicios
+    return {
+      valid: false,
+      reply: 'No es posible responder a tu consulta. Solo puedo responder preguntas que hagan referencia a los personajes y registros de los microservicios de Pokémon, Anime (Jujutsu Kaisen) o Profesores.',
+      reason: 'out_of_scope',
     };
   }
 

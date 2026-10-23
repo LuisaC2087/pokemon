@@ -1,40 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
 const knowledgeBase = require('./knowledgeBase');
+const aiProviders = require('./aiProviders');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = parseInt(process.env.PORT || '3003', 10);
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-
-// Inicializar Google Generative AI
-let genAI = null;
-if (GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10) {
-  try {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY.trim());
-    console.log(`[Chat-IA] Google Gemini AI inicializado con modelo ${GEMINI_MODEL}`);
-  } catch (err) {
-    console.error('[Chat-IA] Error inicializando Google Generative AI:', err.message);
-  }
-} else {
-  console.log('[Chat-IA] AVISO: GEMINI_API_KEY no configurada. Configure GEMINI_API_KEY en .env para habilitar las respuestas de la IA.');
-}
 
 // Swagger OpenAPI 3.0
 const swaggerOptions = {
   swaggerDefinition: {
     openapi: '3.0.0',
     info: {
-      title: 'Chat IA - Microservicio',
-      version: '1.0.0',
-      description: 'Microservicio de Asistente IA conectado a los microservicios de Pokemon, Jujutsu Kaisen y Profesores.',
+      title: 'Chat IA - Microservicio Multi-Modelo',
+      version: '1.1.0',
+      description:
+        'Microservicio de Asistente IA conectado a los microservicios de Pokemon, Jujutsu Kaisen y Profesores. Soporta multiples proveedores de IA (Google Gemini, OpenAI, DeepSeek) y tiempo de espera parametrizable.',
     },
     servers: [
       { url: process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`, description: 'Servidor principal' },
@@ -46,18 +32,24 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// Helper para limpiar cualquier emoji
-function stripEmojis(text) {
-  if (!text) return '';
-  return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]/gu, '').trim();
-}
-
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Estado de salud del microservicio y de los proveedores de IA
+ *     responses:
+ *       200:
+ *         description: Estado del servicio
+ */
 app.get('/health', (req, res) => {
+  const providers = aiProviders.getProvidersStatus();
   res.json({
     status: 'ok',
     service: 'chat-ia-node',
-    hasGeminiKey: Boolean(genAI),
-    model: genAI ? GEMINI_MODEL : null,
+    providers,
+    hasGeminiKey: aiProviders.isProviderConfigured('gemini'),
+    hasOpenAIKey: aiProviders.isProviderConfigured('openai'),
+    hasDeepSeekKey: aiProviders.isProviderConfigured('deepseek'),
     counts: {
       pokemons: knowledgeBase.pokemons.length,
       jujutsuCharacters: knowledgeBase.characters.length,
@@ -65,16 +57,52 @@ app.get('/health', (req, res) => {
     },
     serviceErrors: knowledgeBase.serviceErrors,
     lastSync: knowledgeBase.lastSync,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
+/**
+ * @swagger
+ * /providers:
+ *   get:
+ *     summary: Lista de proveedores de Inteligencia Artificial configurados y tiempos de espera permitidos
+ *     responses:
+ *       200:
+ *         description: Lista de proveedores y configuraciones
+ */
+app.get('/providers', (req, res) => {
+  res.json({
+    providers: aiProviders.getProvidersStatus(),
+    allowedTimeouts: [20, 40, 80, 160],
+    defaultTimeout: 40,
+    defaultProvider: 'gemini',
+  });
+});
+
+/**
+ * @swagger
+ * /suggestions:
+ *   get:
+ *     summary: Preguntas sugeridas basadas en la base de conocimiento
+ *     responses:
+ *       200:
+ *         description: Lista de preguntas sugeridas
+ */
 app.get('/suggestions', (req, res) => {
   res.json({
-    suggestions: knowledgeBase.getSuggestedQuestions()
+    suggestions: knowledgeBase.getSuggestedQuestions(),
   });
 });
 
+/**
+ * @swagger
+ * /sync:
+ *   post:
+ *     summary: Fuerza la resincronizacion con los microservicios
+ *     responses:
+ *       200:
+ *         description: Resultado de la sincronizacion
+ */
 app.post('/sync', async (req, res) => {
   try {
     await knowledgeBase.syncFromMicroservices();
@@ -86,145 +114,99 @@ app.post('/sync', async (req, res) => {
         jujutsuCharacters: knowledgeBase.characters.length,
         profesores: knowledgeBase.profesores.length,
       },
-      serviceErrors: knowledgeBase.serviceErrors
+      serviceErrors: knowledgeBase.serviceErrors,
     });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
+/**
+ * @swagger
+ * /chat:
+ *   post:
+ *     summary: Envia una consulta al asistente IA con proveedor y timeout parametrizables
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: Cual es la tecnica de Gojo?
+ *               provider:
+ *                 type: string
+ *                 enum: [gemini, openai, deepseek]
+ *                 example: gemini
+ *               timeoutSeconds:
+ *                 type: integer
+ *                 enum: [20, 40, 80, 160]
+ *                 example: 40
+ *               history:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       200:
+ *         description: Respuesta generada por la IA
+ */
 app.post('/chat', async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, provider = 'gemini', timeoutSeconds = 40 } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'El campo message es requerido y no puede estar vacio.' });
     }
 
-    // Si la IA no esta configurada, no responder con motores locales: detenerse e informar error
-    if (!genAI) {
-      return res.status(503).json({
-        error: 'El servicio de Inteligencia Artificial no esta disponible. Configure una clave valida en GEMINI_API_KEY para habilitar el asistente.',
-        reply: 'El servicio de Inteligencia Artificial no esta configurado actualmente. Por favor verifique la clave de API.',
+    const selectedProvider = aiProviders.normalizeProvider(provider);
+    const parsedTimeout = [20, 40, 80, 160].includes(Number(timeoutSeconds))
+      ? Number(timeoutSeconds)
+      : 40;
+    const timeoutMs = parsedTimeout * 1000;
+
+    // Verificar si el proveedor solicitado esta configurado con credenciales
+    if (!aiProviders.isProviderConfigured(selectedProvider)) {
+      const providerMeta = aiProviders.getProvidersStatus().find((p) => p.id === selectedProvider);
+      const envKey = providerMeta?.envKey || 'API_KEY';
+      return res.status(400).json({
+        error: `El proveedor ${providerMeta?.name || selectedProvider} no esta configurado en el servidor.`,
+        reply: `El proveedor "${providerMeta?.name || selectedProvider}" no tiene una clave valida configurada en el servidor (${envKey} en .env). Por favor configure la variable de entorno o seleccione otro proveedor como Google Gemini.`,
+        provider: selectedProvider,
+        configured: false,
+        timeoutSeconds: parsedTimeout,
       });
     }
 
     const trimmedMessage = message.trim();
 
     try {
-      const candidateModels = [
-        GEMINI_MODEL,
-        'gemini-flash-lite-latest',
-        'gemini-flash-latest',
-      ].filter((val, idx, arr) => Boolean(val) && arr.indexOf(val) === idx);
+      // 1. VALIDACIÓN REQUERIDA POR EL NEGOCIO:
+      // Validar si la pregunta hace referencia a uno de los personajes en los microservicios de pokemon, anime y profesores.
+      const validation = await knowledgeBase.validarReferenciaPersonajes(trimmedMessage);
 
-      const activeModelName = candidateModels[0] || 'gemini-flash-lite-latest';
-      const plannerModel = genAI.getGenerativeModel({
-        model: activeModelName,
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json',
-        }
-      });
-
-      // PASO 1 Y 2: El modelo solicita o determina ejecutar la herramienta correspondiente
-      let toolDecision = { tool: 'ninguna', args: {} };
-      try {
-        const decisionPrompt = `Eres el orquestador de herramientas de la aplicacion.
-Dado el mensaje del usuario y el historial previo, decide si requiere consultar alguno de los 3 microservicios:
-- "buscar_profesores": si la pregunta es sobre profesores, docentes, departamento academico (ej: Sistemas, Matematicas, etc.), profesion o cuerpo docente.
-- "buscar_pokemons": si la pregunta es sobre pokemons, sus caracteristicas, tipos, habilidades, o un pokemon en particular.
-- "buscar_personajes_jujutsu": si la pregunta es sobre personajes de Jujutsu Kaisen, hechiceros, grados, tecnicas malditas o expansiones de dominio.
-- "ninguna": si es un saludo, despedida, agradecimiento o una pregunta ajena a estos 3 temas.
-
-Responde UNICAMENTE un JSON con este formato:
-{
-  "tool": "buscar_profesores" | "buscar_pokemons" | "buscar_personajes_jujutsu" | "ninguna",
-  "args": {
-    "departamento": string o null,
-    "nombre": string o null,
-    "profesion": string o null,
-    "tipo": string o null,
-    "grado": string o null,
-    "tecnica": string o null,
-    "termino": string o null,
-    "todos": boolean
-  }
-}
-
-Mensaje del usuario: "${trimmedMessage}"`;
-
-        const decisionRes = await plannerModel.generateContent(decisionPrompt);
-        const parsed = JSON.parse(decisionRes.response.text());
-        if (parsed && parsed.tool) {
-          toolDecision = parsed;
-        }
-      } catch (err) {
-        console.warn('[Chat-IA] Planificador automatico de herramientas con fallo leve, usando analizador de respaldo:', err.message);
-        const lower = trimmedMessage.toLowerCase();
-        if (lower.includes('profesor') || lower.includes('docente') || lower.includes('departamento') || lower.includes('facultad') || lower.includes('sistemas') || lower.includes('materias')) {
-          let dep = null;
-          if (lower.includes('sistema') || lower.includes('sistemas')) dep = 'Sistemas';
-          else if (lower.includes('matematica') || lower.includes('matemáticas')) dep = 'Matematicas';
-          else if (lower.includes('idioma') || lower.includes('idiomas')) dep = 'Idiomas';
-          toolDecision = { tool: 'buscar_profesores', args: { departamento: dep, termino: trimmedMessage, todos: lower.includes('todos') || lower.includes('cuales') } };
-        } else if (lower.includes('pokemon') || lower.includes('pikachu') || lower.includes('charizard') || lower.includes('bulbasaur') || lower.includes('tipo')) {
-          toolDecision = { tool: 'buscar_pokemons', args: { termino: trimmedMessage, todos: lower.includes('todos') } };
-        } else if (lower.includes('jujutsu') || lower.includes('gojo') || lower.includes('itadori') || lower.includes('sukuna') || lower.includes('hechicero') || lower.includes('grado')) {
-          toolDecision = { tool: 'buscar_personajes_jujutsu', args: { termino: trimmedMessage, todos: lower.includes('todos') } };
-        }
-      }
-
-      console.log(`[Chat-IA] Herramienta seleccionada: ${toolDecision.tool}`, toolDecision.args);
-
-      // PASO 3 Y 4: El backend valida los argumentos y consulta el microservicio en tiempo real
-      let dbData = null;
-      let toolName = toolDecision.tool;
-
-      if (toolName === 'buscar_profesores') {
-        dbData = await knowledgeBase.buscarProfesores(toolDecision.args || {});
-      } else if (toolName === 'buscar_pokemons') {
-        dbData = await knowledgeBase.buscarPokemons(toolDecision.args || {});
-      } else if (toolName === 'buscar_personajes_jujutsu') {
-        dbData = await knowledgeBase.buscarPersonajesJujutsu(toolDecision.args || {});
-      }
-
-      // PASO 5 Y 6: Enviar resultados al modelo para formular la respuesta
-      // Si el microservicio NO encuentra nada, NO le pregunta a la IA
-      if (dbData && (!dbData.found || dbData.results.length === 0)) {
-        let noDataReply = 'La informacion solicitada no se encuentra disponible en la base de datos de los microservicios.';
-        if (toolName === 'buscar_profesores') {
-          const dep = toolDecision.args?.departamento;
-          noDataReply = dep
-            ? `No se encontraron profesores registrados en el departamento de ${dep} en la base de datos actual del microservicio.`
-            : 'No se encontraron profesores registrados en la base de datos actual del microservicio.';
-        } else if (toolName === 'buscar_pokemons') {
-          const nom = toolDecision.args?.nombre || toolDecision.args?.termino;
-          noDataReply = nom
-            ? `El pokemon "${nom}" no se encuentra registrado en la base de datos del microservicio.`
-            : 'No se encontraron registros de Pokemon en la base de datos del microservicio.';
-        } else if (toolName === 'buscar_personajes_jujutsu') {
-          const nom = toolDecision.args?.nombre || toolDecision.args?.termino;
-          noDataReply = nom
-            ? `El personaje "${nom}" no se encuentra registrado en la base de datos de Jujutsu Kaisen.`
-            : 'No se encontraron personajes de Jujutsu Kaisen en la base de datos del microservicio.';
-        }
-
-        console.log(`[Chat-IA] El microservicio devolvio 0 resultados para ${toolName}. Respondiendo directamente sin consultar a la IA.`);
-
+      // SI NO: Responder directamente al chat que NO es posible SIN consumir el microservicio de la IA
+      if (!validation.valid) {
+        console.log(`[Chat-IA] Pregunta NO hace referencia a personajes validos de los microservicios (${validation.reason}). Respondiendo sin consumir IA.`);
         return res.json({
-          reply: stripEmojis(noDataReply),
+          reply: aiProviders.stripEmojis(validation.reply),
           suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
           outOfScope: true,
-          provider: 'system_database',
-          toolExecuted: toolName
+          aiConsumed: false,
+          provider: 'validador_microservicio',
+          timeoutSeconds: parsedTimeout,
         });
       }
 
-      // Si SI existen resultados en la base de datos, enviar los datos a la IA para que enriquezca la respuesta
-      let instructionForGemini = '';
-      if (dbData && dbData.found && dbData.results.length > 0) {
-        instructionForGemini = `
+      // SI SÍ: Consumir el microservicio de la IA seleccionada (Gemini, OpenAI, DeepSeek)
+      const toolName = validation.toolName;
+      const dbData = validation.dbData;
+      console.log(`[Chat-IA] Pregunta valida para ${toolName} (${dbData.results.length} registros). Consumiendo IA (${selectedProvider})...`);
+
+      const instruction = `
 Se consulto la base de datos oficial del microservicio en tiempo real para la herramienta "${toolName}".
 REGISTROS OFICIALES ENCONTRADOS (${dbData.results.length} registros verificados en la base de datos):
 ${JSON.stringify(dbData.results, null, 2)}
@@ -235,101 +217,75 @@ INSTRUCCION:
 - Manten la fidelidad a los datos provistos por el microservicio.
 - NO uses ningun emoji en tu respuesta.
 `.trim();
-      } else {
-        // Consulta general o fuera de los 3 microservicios
-        instructionForGemini = `
-Eres el Asistente Oficial de la aplicacion, limitado exclusivamente a los microservicios de Pokemon, Jujutsu Kaisen y Profesores.
-- Si el usuario saluda o pregunta en que puedes ayudarlo, responde cordialmente indicando que puedes consultar los microservicios de Pokemon, Jujutsu Kaisen y Profesores universitarios.
-- Si la pregunta es sobre cualquier otro tema ajeno a estos 3 microservicios, informa con amabilidad que no puedes responder temas externos y sugiere que preguntas validas puede hacer.
-- NO uses ningun emoji.
-`.trim();
-      }
 
-      const contents = [];
-      if (Array.isArray(history)) {
-        history.slice(-4).forEach(h => {
-          if (h.role && h.content) {
-            contents.push({
-              role: h.role === 'assistant' ? 'model' : h.role,
-              parts: [{ text: stripEmojis(h.content) }]
-            });
-          }
+      // Generar respuesta usando el proveedor elegido (Gemini, OpenAI, DeepSeek)
+      let aiResult;
+      try {
+        aiResult = await aiProviders.generateAssistantResponse({
+          providerId: selectedProvider,
+          userMessage: trimmedMessage,
+          instruction,
+          history,
+          timeoutMs,
         });
-      }
-
-      contents.push({
-        role: 'user',
-        parts: [{
-          text: `Pregunta del usuario: "${trimmedMessage}"\n\nContexto y estado del sistema:\n${instructionForGemini}`
-        }]
-      });
-
-      let textResponse = null;
-
-      for (const modelName of candidateModels) {
-        try {
-          const model = genAI.getGenerativeModel({
-            model: modelName,
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 800,
-            }
-          });
-
-          const result = await model.generateContent({ contents });
-          textResponse = stripEmojis(result.response.text());
-          break;
-        } catch (err) {
-          console.warn(`[Chat-IA] Modelo ${modelName} no pudo responder (${err.message}). Intentando siguiente...`);
-        }
-      }
-
-      // Si todos los modelos de Gemini fallaron o no estan disponibles, respuesta garantizada
-      if (!textResponse) {
-        if (dbData && dbData.found && dbData.results.length > 0) {
-          if (toolName === 'buscar_profesores') {
-            textResponse = `Profesores encontrados en la base de datos:\n` +
-              dbData.results.map(p => `- ${p.nombre}: Departamento de ${p.departamento || 'N/A'}, ${p.profesion || ''} (Email: ${p.email || 'N/A'})`).join('\n');
-          } else if (toolName === 'buscar_pokemons') {
-            textResponse = `Pokemon encontrados en la base de datos:\n` +
-              dbData.results.map(p => `- ${p.name} (Tipo: ${p.type}, HP: ${p.hp || 'N/A'}, Habilidad: ${p.ability || 'N/A'})`).join('\n');
-          } else {
-            textResponse = `Personajes encontrados en la base de datos:\n` +
-              dbData.results.map(c => `- ${c.name} (Grado: ${c.grade || 'N/A'}, Tecnica: ${c.technique || 'N/A'})`).join('\n');
-          }
-        } else if (dbData && !dbData.found) {
-          textResponse = 'La informacion solicitada no se encuentra disponible actualmente en la base de datos del microservicio. Por politicas de precision, no puedo improvisar datos ni inventar registros.';
+      } catch (genErr) {
+        console.warn(`[Chat-IA] Proveedor ${selectedProvider} fallo al generar texto (${genErr.message}). Preparando respuesta de respaldo.`);
+        let textResponse = '';
+        if (toolName === 'buscar_profesores') {
+          textResponse =
+            `Profesores encontrados en la base de datos:\n` +
+            dbData.results
+              .map(
+                (p) =>
+                  `- ${p.nombre}: Departamento de ${p.departamento || 'N/A'}, ${p.profesion || ''} (Email: ${p.email || 'N/A'})`
+              )
+              .join('\n');
+        } else if (toolName === 'buscar_pokemons') {
+          textResponse =
+            `Pokemon encontrados en la base de datos:\n` +
+            dbData.results
+              .map((p) => `- ${p.name} (Tipo: ${p.type}, HP: ${p.hp || 'N/A'}, Habilidad: ${p.ability || 'N/A'})`)
+              .join('\n');
         } else {
-          textResponse = 'Solo puedo responder consultas basadas en los microservicios de Pokemon, Jujutsu Kaisen y Profesores. Puedes consultarme por cualquiera de ellos.';
+          textResponse =
+            `Personajes encontrados en la base de datos:\n` +
+            dbData.results
+              .map((c) => `- ${c.name} (Grado: ${c.grade || 'N/A'}, Tecnica: ${c.technique || 'N/A'})`)
+              .join('\n');
         }
+        aiResult = {
+          reply: textResponse,
+          providerUsed: selectedProvider,
+          modelUsed: 'system_database_fallback',
+        };
       }
 
-      const outOfScope = textResponse.toLowerCase().includes('fuera de') || 
-                         textResponse.toLowerCase().includes('solo tengo acceso') ||
-                         textResponse.toLowerCase().includes('no se encuentra disponible') ||
-                         textResponse.toLowerCase().includes('no puedo responder');
+      const textResponse = aiResult.reply;
 
       return res.json({
         reply: textResponse,
         suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
-        outOfScope,
-        provider: 'gemini',
-        toolExecuted: toolName
+        outOfScope: false,
+        aiConsumed: true,
+        provider: aiResult.providerUsed,
+        model: aiResult.modelUsed,
+        toolExecuted: toolName,
+        timeoutSeconds: parsedTimeout,
       });
     } catch (err) {
-      console.error('[Chat-IA] Error inesperado en /chat:', err.message);
+      console.error(`[Chat-IA] Error en logica de chat (${selectedProvider}):`, err.message);
       return res.status(500).json({
-        error: 'Error interno en el servicio de chat',
-        reply: 'Ocurrio un inconveniente al procesar la solicitud. Por favor intenta nuevamente.',
-        details: err.message
+        error: `Error al procesar consulta con ${selectedProvider}: ${err.message}`,
+        reply: `Ocurrio un inconveniente con el proveedor ${selectedProvider} (${err.message}). Por favor intenta nuevamente o selecciona otro proveedor.`,
+        provider: selectedProvider,
+        timeoutSeconds: parsedTimeout,
       });
     }
-
   } catch (error) {
     console.error('[Chat-IA] Error interno:', error);
     res.status(500).json({
       error: 'Error interno en el servicio de Chat IA',
-      details: error.message
+      details: error.message,
     });
   }
 });
@@ -337,9 +293,9 @@ Eres el Asistente Oficial de la aplicacion, limitado exclusivamente a los micros
 const server = app.listen(PORT, async () => {
   console.log(`[Chat-IA] Microservicio de IA ejecutandose en el puerto ${PORT}`);
   console.log(`[Chat-IA] Documentacion Swagger disponible en: http://localhost:${PORT}/api-docs`);
-  
+
   // Consultar microservicios en segundo plano al arrancar
-  knowledgeBase.syncFromMicroservices().catch(err => {
+  knowledgeBase.syncFromMicroservices().catch((err) => {
     console.warn('[Chat-IA] Error al consultar microservicios al inicio:', err.message);
   });
 });

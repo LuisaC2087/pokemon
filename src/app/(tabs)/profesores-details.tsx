@@ -12,7 +12,7 @@ import { queueDeleteProfesor } from "../../services/profesoresDb";
 const BASE_URL = "https://profesores-node-ueas.onrender.com";
 
 export default function ProfesoresDetails() {
-  const { selectedProfesor: p, setSelectedProfesor, triggerSync } = useContext(AppContext);
+  const { selectedProfesor: p, setSelectedProfesor, triggerSync, refreshLocal } = useContext(AppContext);
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
 
@@ -55,6 +55,11 @@ export default function ProfesoresDetails() {
     try {
       // 1. Eliminar de la base de datos local y registrar en la cola de sincronización
       await queueDeleteProfesor(String(profId));
+
+      // Actualizar estado de la interfaz de inmediato
+      if (refreshLocal) {
+        await refreshLocal();
+      }
 
       // 2. Disparar sincronización para propagar la eliminación a la base de datos en la nube
       triggerSync().catch((err) => console.warn("Error sincronizando eliminación:", err));

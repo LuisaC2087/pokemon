@@ -48,7 +48,7 @@ function InputField({
 
 export default function ProfesoresForm() {
   const router = useRouter();
-  const { selectedProfesor, setSelectedProfesor, triggerSync } = useContext(AppContext);
+  const { selectedProfesor, setSelectedProfesor, triggerSync, refreshLocal } = useContext(AppContext);
   const [loading, setLoading] = useState(false);
   const [processingImage, setProcessingImage] = useState(false);
   const isEditing = !!selectedProfesor && !!(selectedProfesor.id || selectedProfesor._id);
@@ -176,6 +176,11 @@ export default function ProfesoresForm() {
         await queueUpdateProfesor(profesorRecord);
       } else {
         await queueInsertProfesor(profesorRecord);
+      }
+
+      // Actualizar estado de la interfaz de inmediato
+      if (refreshLocal) {
+        await refreshLocal();
       }
 
       // 2. Disparar sincronización para propagar a la base de datos en la nube

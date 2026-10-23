@@ -241,7 +241,7 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
       if (item.action === 'DELETE') {
         const res = await fetch(`${baseUrl}/profesores/${item.entity_id}`, {
           method: 'DELETE',
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         // Si fue exitoso o ya no existe en el servidor (404), damos por completada la eliminación
         if (res.ok || res.status === 404) {
@@ -253,7 +253,7 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: item.payload,
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         // 200, 201 o 409 (ya existe)
         if (res.ok || res.status === 409) {
@@ -265,17 +265,23 @@ export async function processSyncQueue(baseUrl: string): Promise<number> {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: item.payload,
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(25000),
         });
         if (res.ok) {
           await removeQueueItem(item.id);
           processed++;
         } else if (res.status === 404) {
-          // Si el servidor respondió 404 (el profesor fue borrado en la nube antes o durante la edición):
-          // Se borra de la base de datos local para que no quede huérfano y se retira de la cola
-          await database.runAsync('DELETE FROM profesores WHERE id = ?', item.entity_id);
-          await removeQueueItem(item.id);
-          processed++;
+          // Si el servidor responde 404, intentar enviarlo como creación para no perder datos
+          const postRes = await fetch(`${baseUrl}/profesores`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: item.payload,
+            signal: AbortSignal.timeout(25000),
+          });
+          if (postRes.ok || postRes.status === 409) {
+            await removeQueueItem(item.id);
+            processed++;
+          }
         }
       }
     } catch (err) {
@@ -374,10 +380,9 @@ export async function syncProfesoresFromCloud(
     }
   }
 
-  // 3. Eliminar localmente registros que hayan sido borrados en la nube por otros clientes
-  // (funciona incluso si se borraron todos los registros en la nube y el array viene vacío)
-  if (Array.isArray(cloudProfesores) && localList.length > 0) {
-    const toDelete = localList.filter((p) => !cloudIds.has(p.id) && !pendingMutations.has(p.id));
+  // 3. Eliminar localmente registros que hayan sido borrados en la nube solo si la nube respondió con datos válidos
+  if (Array.isArray(cloudProfesores) && cloudProfesores.length > 0 && localList.length > 0) {
+    const toDelete = localList.filter((p) => !cloudIds.has(p.id) && !pendingMutations.has(p.id) && !pendingDeletes.has(p.id));
     if (toDelete.length > 0) {
       const placeholders = toDelete.map(() => '?').join(',');
       await database.runAsync(

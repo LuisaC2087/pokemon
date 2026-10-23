@@ -37,6 +37,7 @@ interface AppContextType {
   setSyncInterval: (interval: SyncInterval) => void;
   syncState: SyncState;
   localProfesores: ProfesorLocal[];
+  refreshLocal: () => Promise<void>;
   triggerSync: () => Promise<void>;
   markAllProfesoresSeen: () => Promise<void>;
 }
@@ -78,12 +79,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSyncState((prev) => ({ ...prev, isSyncing: true, error: null }));
 
     try {
+      // 0. Refrescar estado local de inmediato por si hay cambios pendientes
+      await refreshLocal();
+
       // 1. FASE PUSH: Enviar mutaciones locales pendientes (eliminaciones, inserciones, actualizaciones)
       const pushedCount = await processSyncQueue(BASE_URL);
 
       // 2. FASE PULL: Obtener datos actualizados de la nube
       const res = await fetch(`${BASE_URL}/profesores`, {
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(25000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const cloudData = await res.json();
@@ -92,26 +96,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         // 3. FASE RECONCILIACIÓN: Actualizar BD local respetando cambios en cola
         const syncResult = await syncProfesoresFromCloud(cloudData);
 
-        // Si hubo cambios locales o se enviaron mutaciones a la nube, recargar estado
-        if (syncResult.hasChanges || pushedCount > 0) {
-          const profs = await getAllProfesoresLocal();
-          const newCount = await countNewProfesores();
-          setLocalProfesores(profs);
-          setSyncState({
-            isSyncing: false,
-            lastSyncAt: new Date(),
-            newCount,
-            error: null,
-            totalLocal: profs.length,
-          });
-        } else {
-          setSyncState((prev) => ({
-            ...prev,
-            isSyncing: false,
-            lastSyncAt: new Date(),
-            error: null,
-          }));
-        }
+        // Recargar siempre el estado local tras sincronizar
+        await refreshLocal();
+        setSyncState((prev) => ({
+          ...prev,
+          isSyncing: false,
+          lastSyncAt: new Date(),
+          error: null,
+        }));
       }
     } catch (err: any) {
       setSyncState((prev) => ({
@@ -122,7 +114,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       isSyncingRef.current = false;
     }
-  }, []);
+  }, [refreshLocal]);
 
   const markAllProfesoresSeen = useCallback(async () => {
     await markAllSeen();
@@ -159,6 +151,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setSyncInterval,
         syncState,
         localProfesores,
+        refreshLocal,
         triggerSync,
         markAllProfesoresSeen,
       }}
