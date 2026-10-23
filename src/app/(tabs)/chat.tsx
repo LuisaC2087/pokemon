@@ -185,7 +185,7 @@ export default function ChatScreen() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev: Message[]) => [...prev, userMessage]);
     setInputText('');
     setLoading(true);
     scrollToBottom();
@@ -198,7 +198,7 @@ export default function ChatScreen() {
     }, timeoutMs);
 
     try {
-      const history = messages.slice(-6).map((m) => ({
+      const history = messages.slice(-6).map((m: Message) => ({
         role: m.role,
         content: m.content,
       }));
@@ -230,7 +230,7 @@ export default function ChatScreen() {
           provider: selectedProvider,
           timeoutSeconds: selectedTimeout,
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev: Message[]) => [...prev, assistantMessage]);
         setServiceStatus('error');
         return;
       }
@@ -247,7 +247,7 @@ export default function ChatScreen() {
         timeoutSeconds: selectedTimeout,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev: Message[]) => [...prev, assistantMessage]);
       setServiceStatus('ok');
     } catch (err: any) {
       clearTimeout(timeoutTimer);
@@ -277,7 +277,7 @@ export default function ChatScreen() {
         timeoutSeconds: selectedTimeout,
         isTimeoutError: isTimeout,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev: Message[]) => [...prev, errorMessage]);
       setServiceStatus('error');
     } finally {
       clearTimeout(timeoutTimer);
@@ -291,7 +291,7 @@ export default function ChatScreen() {
   };
 
   const isTyping = inputText.trim().length > 0;
-  const currentProviderObj = AI_PROVIDERS.find((p) => p.id === selectedProvider) || AI_PROVIDERS[0];
+  const currentProviderObj = AI_PROVIDERS.find((p: ProviderConfig) => p.id === selectedProvider) || AI_PROVIDERS[0];
 
   return (
     <LinearGradient colors={['#0f172a', '#0b1329', '#030712']} style={styles.container}>
@@ -310,7 +310,7 @@ export default function ChatScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={[styles.iconBtn, showConfigPanel && styles.iconBtnActive]}
-            onPress={() => setShowConfigPanel((prev) => !prev)}
+            onPress={() => setShowConfigPanel((prev: boolean) => !prev)}
             activeOpacity={0.7}
           >
             <Ionicons
@@ -487,10 +487,10 @@ export default function ChatScreen() {
             </View>
           ) : (
             /* Mensajes de conversacion */
-            messages.map((item) => {
+            messages.map((item: Message) => {
               const isUser = item.role === 'user';
               const provConfig = AI_PROVIDERS.find(
-                (p) => p.id === (item.provider || selectedProvider)
+                (p: ProviderConfig) => p.id === (item.provider || selectedProvider)
               ) || currentProviderObj;
 
               return (
@@ -569,7 +569,7 @@ export default function ChatScreen() {
                       <View style={styles.suggestionChipsBlock}>
                         <Text style={styles.suggestionTitle}>Preguntas sugeridas:</Text>
                         <View style={styles.chipsRow}>
-                          {item.suggestions.map((sug, idx) => (
+                          {item.suggestions.map((sug: string, idx: number) => (
                             <TouchableOpacity
                               key={idx}
                               style={styles.chip}
