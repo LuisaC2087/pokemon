@@ -3,9 +3,12 @@
  * 1. Pokemon (PostgreSQL / pokemon-node)
  * 2. Jujutsu Kaisen (MongoDB Atlas / anime-python)
  * 3. Profesores (Supabase PostgreSQL / profesores-node)
- * 
- * NOTA: No contiene datos hardcodeados ni motores de respuesta locales.
- * Solo sincroniza datos desde los microservicios para alimentar el contexto de Gemini AI.
+ *
+ * FIX ARQUITECTURA:
+ * - Se elimina el double-fetching: validarReferenciaPersonajes usa los datos
+ *   ya cargados por Promise.all en lugar de volver a hacer fetch internamente.
+ * - Se agrega cache TTL por microservicio (60s para datos estaticos,
+ *   30s para profesores que son mas dinamicos).
  */
 
 const POKEMON_BASE_URL = process.env.POKEMON_SERVICE_URL || 'https://pokemon-node-ueas.onrender.com';
@@ -15,6 +18,10 @@ const PROFESORES_BASE_URL = process.env.PROFESORES_SERVICE_URL || 'https://profe
 // Tiempo de espera para microservicios alojados en Render (permite cold starts)
 const FETCH_TIMEOUT_MS = 25000;
 
+// TTL de cache en ms (datos estaticos 60s, profesores 30s por ser dinamicos)
+const CACHE_TTL_STATIC_MS = 60 * 1000;
+const CACHE_TTL_DYNAMIC_MS = 30 * 1000;
+
 class KnowledgeBase {
   constructor() {
     this.pokemons = [];
@@ -22,6 +29,12 @@ class KnowledgeBase {
     this.profesores = [];
     this.lastSync = null;
     this.serviceErrors = {
+      pokemon: null,
+      jujutsu: null,
+      profesores: null,
+    };
+    // Cache TTL: guarda el timestamp de expiracion por servicio
+    this._cacheExpiry = {
       pokemon: null,
       jujutsu: null,
       profesores: null,
@@ -38,6 +51,7 @@ class KnowledgeBase {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.pokemons = data;
+          this._cacheExpiry.pokemon = Date.now() + CACHE_TTL_STATIC_MS;
           this.serviceErrors.pokemon = null;
           console.log(`[KnowledgeBase] Pokemon cargados: ${this.pokemons.length}`);
         } else {
@@ -58,6 +72,7 @@ class KnowledgeBase {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.characters = data;
+          this._cacheExpiry.jujutsu = Date.now() + CACHE_TTL_STATIC_MS;
           this.serviceErrors.jujutsu = null;
           console.log(`[KnowledgeBase] Personajes de Jujutsu cargados: ${this.characters.length}`);
         } else {
@@ -78,6 +93,7 @@ class KnowledgeBase {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.profesores = data;
+          this._cacheExpiry.profesores = Date.now() + CACHE_TTL_DYNAMIC_MS;
           this.serviceErrors.profesores = null;
           console.log(`[KnowledgeBase] Profesores cargados: ${this.profesores.length}`);
         } else {
@@ -94,13 +110,20 @@ class KnowledgeBase {
     this.lastSync = new Date();
   }
 
+  // ── Fetch con caché TTL ──────────────────────────────────────────────────
+
   async fetchLiveProfesores() {
+    const now = Date.now();
+    if (this.profesores.length > 0 && this._cacheExpiry.profesores && now < this._cacheExpiry.profesores) {
+      return this.profesores;
+    }
     try {
       const res = await fetch(`${PROFESORES_BASE_URL}/profesores`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.profesores = data;
+          this._cacheExpiry.profesores = now + CACHE_TTL_DYNAMIC_MS;
           this.serviceErrors.profesores = null;
         }
       }
@@ -111,12 +134,17 @@ class KnowledgeBase {
   }
 
   async fetchLivePokemons() {
+    const now = Date.now();
+    if (this.pokemons.length > 0 && this._cacheExpiry.pokemon && now < this._cacheExpiry.pokemon) {
+      return this.pokemons;
+    }
     try {
       const res = await fetch(`${POKEMON_BASE_URL}/pokemons`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.pokemons = data;
+          this._cacheExpiry.pokemon = now + CACHE_TTL_STATIC_MS;
           this.serviceErrors.pokemon = null;
         }
       }
@@ -127,12 +155,17 @@ class KnowledgeBase {
   }
 
   async fetchLiveJujutsu() {
+    const now = Date.now();
+    if (this.characters.length > 0 && this._cacheExpiry.jujutsu && now < this._cacheExpiry.jujutsu) {
+      return this.characters;
+    }
     try {
       const res = await fetch(`${JUJUTSU_BASE_URL}/characters`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           this.characters = data;
+          this._cacheExpiry.jujutsu = now + CACHE_TTL_STATIC_MS;
           this.serviceErrors.jujutsu = null;
         }
       }
@@ -142,12 +175,12 @@ class KnowledgeBase {
     return this.characters;
   }
 
-  async buscarProfesores({ departamento, nombre, profesion, termino, todos } = {}) {
-    const list = await this.fetchLiveProfesores();
+  // ── Filtrado local (sin re-fetch) ─────────────────────────────────────────
+
+  _filtrarProfesores(list, { departamento, nombre, profesion, termino, todos } = {}) {
     if (!list || list.length === 0) {
       return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
     }
-
     if (todos) {
       return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
     }
@@ -155,17 +188,16 @@ class KnowledgeBase {
     const depQ = (departamento || '').toLowerCase().trim();
     const nomQ = (nombre || '').toLowerCase().trim();
     const profQ = (profesion || '').toLowerCase().trim();
-    const termQ = (termino || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-    // Si no se pasaron filtros específicos, retornar todos los registrados
     if (!depQ && !nomQ && !profQ && !termQ) {
       return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
     }
 
     const filtered = list.filter((p) => {
-      const pDep = (p.departamento || '').toLowerCase();
-      const pNom = (p.nombre || '').toLowerCase();
-      const pProf = (p.profesion || '').toLowerCase();
+      const pDep = (p.departamento || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const pNom = (p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const pProf = (p.profesion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       if (depQ && pDep.includes(depQ)) return true;
       if (nomQ && pNom.includes(nomQ)) return true;
@@ -183,19 +215,17 @@ class KnowledgeBase {
     };
   }
 
-  async buscarPokemons({ nombre, tipo, id, termino, todos } = {}) {
-    const list = await this.fetchLivePokemons();
+  _filtrarPokemons(list, { nombre, tipo, id, termino, todos } = {}) {
     if (!list || list.length === 0) {
       return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
     }
-
     if (todos) {
       return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
     }
 
     const nomQ = (nombre || '').toLowerCase().trim();
     const tipoQ = (tipo || '').toLowerCase().trim();
-    const termQ = (termino || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const idQ = id !== undefined && id !== null ? String(id).trim() : '';
 
     if (!nomQ && !tipoQ && !termQ && !idQ) {
@@ -223,12 +253,10 @@ class KnowledgeBase {
     };
   }
 
-  async buscarPersonajesJujutsu({ nombre, grado, tecnica, termino, todos } = {}) {
-    const list = await this.fetchLiveJujutsu();
+  _filtrarJujutsu(list, { nombre, grado, tecnica, termino, todos } = {}) {
     if (!list || list.length === 0) {
       return { found: false, count: 0, totalInDb: 0, results: [], emptyDb: true };
     }
-
     if (todos) {
       return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
     }
@@ -236,7 +264,7 @@ class KnowledgeBase {
     const nomQ = (nombre || '').toLowerCase().trim();
     const gradoQ = (grado || '').toLowerCase().trim();
     const tecQ = (tecnica || '').toLowerCase().trim();
-    const termQ = (termino || '').toLowerCase().trim();
+    const termQ = (termino || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
     if (!nomQ && !gradoQ && !tecQ && !termQ) {
       return { found: true, count: list.length, totalInDb: list.length, results: list, emptyDb: false };
@@ -263,12 +291,32 @@ class KnowledgeBase {
     };
   }
 
+  // ── Métodos públicos buscar* (para compatibilidad con código externo) ──────
+
+  async buscarProfesores(opts) {
+    const list = await this.fetchLiveProfesores();
+    return this._filtrarProfesores(list, opts);
+  }
+
+  async buscarPokemons(opts) {
+    const list = await this.fetchLivePokemons();
+    return this._filtrarPokemons(list, opts);
+  }
+
+  async buscarPersonajesJujutsu(opts) {
+    const list = await this.fetchLiveJujutsu();
+    return this._filtrarJujutsu(list, opts);
+  }
+
   /**
-   * Valida rigurosamente si la pregunta del usuario hace referencia a alguno de los personajes
-   * de los 3 microservicios (Pokemon, Anime Jujutsu Kaisen o Profesores).
-   * 
-   * Retorna { valid: true, toolName, dbData, category } si hace referencia y se hallan registros.
-   * Retorna { valid: false, reply, reason } si no hace referencia o no existe en la BD.
+   * Valida si la pregunta del usuario hace referencia a alguno de los personajes
+   * de los 3 microservicios (Pokemon, Jujutsu Kaisen o Profesores).
+   *
+   * FIX: Usa un unico Promise.all para cargar datos y luego filtra en memoria
+   * sin hacer fetch adicionales (eliminado double-fetching).
+   *
+   * Retorna { valid: true, toolName, dbData, category } o
+   *         { valid: false, reply, reason }
    */
   async validarReferenciaPersonajes(message) {
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
@@ -280,23 +328,23 @@ class KnowledgeBase {
     }
 
     const raw = message.trim();
-    // Normalizar texto eliminando tildes y a minúsculas
     const norm = raw
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
 
-    // Cargar datos en vivo de los microservicios
+    // Un unico Promise.all respeta el cache TTL: si los datos son frescos,
+    // retorna inmediatamente sin hacer requests HTTP adicionales.
     const [pokes, jujutsus, profs] = await Promise.all([
       this.fetchLivePokemons(),
       this.fetchLiveJujutsu(),
       this.fetchLiveProfesores(),
     ]);
 
-    // 1. Verificar si hace referencia a POKÉMON
+    // 1. ¿Hace referencia a POKÉMON?
     const pokeKeywords = [
       'pokemon', 'pokemons', 'pokedex', 'pikachu', 'charizard', 'bulbasaur', 'squirtle',
-      'tipo electrico', 'tipo fuego', 'tipo agua', 'tipo planta', 'tipo veneno'
+      'tipo electrico', 'tipo fuego', 'tipo agua', 'tipo planta', 'tipo veneno',
     ];
     const refersToPokemonKeyword = pokeKeywords.some((kw) => norm.includes(kw));
 
@@ -309,33 +357,28 @@ class KnowledgeBase {
     }
 
     if (refersToPokemonKeyword || matchedPokemon) {
-      const dbData = await this.buscarPokemons({
+      // Usar _filtrarPokemons para evitar re-fetch
+      const dbData = this._filtrarPokemons(pokes, {
         nombre: matchedPokemon ? matchedPokemon.name : undefined,
         termino: raw,
         todos: norm.includes('todos') || norm.includes('cuales') || norm.includes('listar'),
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return {
-          valid: true,
-          toolName: 'buscar_pokemons',
-          dbData,
-          category: 'pokemon',
-        };
-      } else {
-        return {
-          valid: false,
-          reply: 'No es posible responder a tu consulta. El personaje o Pokémon consultado no se encuentra registrado en el microservicio oficial.',
-          reason: 'pokemon_not_found',
-        };
+        return { valid: true, toolName: 'buscar_pokemons', dbData, category: 'pokemon' };
       }
+      return {
+        valid: false,
+        reply: 'No es posible responder a tu consulta. El Pokemon consultado no se encuentra registrado en el microservicio oficial.',
+        reason: 'pokemon_not_found',
+      };
     }
 
-    // 2. Verificar si hace referencia a ANIME (JUJUTSU KAISEN)
+    // 2. ¿Hace referencia a ANIME (Jujutsu Kaisen)?
     const animeKeywords = [
       'jujutsu', 'kaisen', 'hechicero', 'hechiceros', 'maldicion', 'maldiciones',
       'tecnica maldita', 'expansion de dominio', 'anime', 'gojo', 'itadori', 'sukuna',
-      'megumi', 'nobara', 'nanami', 'satoru', 'yuji'
+      'megumi', 'nobara', 'nanami', 'satoru', 'yuji',
     ];
     const refersToAnimeKeyword = animeKeywords.some((kw) => norm.includes(kw));
 
@@ -349,32 +392,26 @@ class KnowledgeBase {
     }
 
     if (refersToAnimeKeyword || matchedJujutsu) {
-      const dbData = await this.buscarPersonajesJujutsu({
+      const dbData = this._filtrarJujutsu(jujutsus, {
         nombre: matchedJujutsu ? matchedJujutsu.name : undefined,
         termino: raw,
         todos: norm.includes('todos') || norm.includes('cuales') || norm.includes('listar'),
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return {
-          valid: true,
-          toolName: 'buscar_personajes_jujutsu',
-          dbData,
-          category: 'jujutsu',
-        };
-      } else {
-        return {
-          valid: false,
-          reply: 'No es posible responder a tu consulta. El personaje de anime (Jujutsu Kaisen) consultado no se encuentra registrado en el microservicio oficial.',
-          reason: 'anime_character_not_found',
-        };
+        return { valid: true, toolName: 'buscar_personajes_jujutsu', dbData, category: 'jujutsu' };
       }
+      return {
+        valid: false,
+        reply: 'No es posible responder a tu consulta. El personaje de anime (Jujutsu Kaisen) consultado no se encuentra registrado en el microservicio oficial.',
+        reason: 'anime_character_not_found',
+      };
     }
 
-    // 3. Verificar si hace referencia a PROFESORES
+    // 3. ¿Hace referencia a PROFESORES?
     const profKeywords = [
       'profesor', 'profesora', 'profesores', 'docente', 'docentes',
-      'departamento', 'catedra', 'materia', 'facultad', 'asignatura'
+      'departamento', 'catedra', 'materia', 'facultad', 'asignatura',
     ];
     const refersToProfKeyword = profKeywords.some((kw) => norm.includes(kw));
 
@@ -393,7 +430,7 @@ class KnowledgeBase {
       else if (norm.includes('matematica') || norm.includes('matematicas')) dep = 'Matematicas';
       else if (norm.includes('idioma') || norm.includes('idiomas')) dep = 'Idiomas';
 
-      const dbData = await this.buscarProfesores({
+      const dbData = this._filtrarProfesores(profs, {
         departamento: dep,
         nombre: matchedProf ? matchedProf.nombre : undefined,
         termino: raw,
@@ -401,25 +438,19 @@ class KnowledgeBase {
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return {
-          valid: true,
-          toolName: 'buscar_profesores',
-          dbData,
-          category: 'profesores',
-        };
-      } else {
-        return {
-          valid: false,
-          reply: 'No es posible responder a tu consulta. El docente o profesor consultado no se encuentra registrado en el microservicio oficial.',
-          reason: 'profesor_not_found',
-        };
+        return { valid: true, toolName: 'buscar_profesores', dbData, category: 'profesores' };
       }
+      return {
+        valid: false,
+        reply: 'No es posible responder a tu consulta. El docente o profesor consultado no se encuentra registrado en el microservicio oficial.',
+        reason: 'profesor_not_found',
+      };
     }
 
-    // 4. Si la pregunta NO hace referencia a ninguno de los 3 microservicios
+    // 4. Fuera de scope
     return {
       valid: false,
-      reply: 'No es posible responder a tu consulta. Solo puedo responder preguntas que hagan referencia a los personajes y registros de los microservicios de Pokémon, Anime (Jujutsu Kaisen) o Profesores.',
+      reply: 'No es posible responder a tu consulta. Solo puedo responder preguntas que hagan referencia a los personajes y registros de los microservicios de Pokemon, Anime (Jujutsu Kaisen) o Profesores.',
       reason: 'out_of_scope',
     };
   }
@@ -451,23 +482,38 @@ class KnowledgeBase {
   buildSystemPrompt() {
     let pokemonSection = 'Base de datos de Pokemon: No hay registros disponibles en este momento o el microservicio esta desconectado.';
     if (this.pokemons.length > 0) {
-      pokemonSection = 'Base de datos de Pokemon (registros actuales del microservicio):\n' + this.pokemons.map(p => 
-        `- ${p.name} (ID: ${p.id}): Tipo: ${p.type}, Habilidad: ${p.ability || 'N/A'}, HP: ${p.hp || 'N/A'}, Altura: ${p.height || 'N/A'}, Peso: ${p.weight || 'N/A'}`
-      ).join('\n');
+      pokemonSection =
+        'Base de datos de Pokemon (registros actuales del microservicio):\n' +
+        this.pokemons
+          .map(
+            (p) =>
+              `- ${p.name} (ID: ${p.id}): Tipo: ${p.type}, Habilidad: ${p.ability || 'N/A'}, HP: ${p.hp || 'N/A'}, Altura: ${p.height || 'N/A'}, Peso: ${p.weight || 'N/A'}`
+          )
+          .join('\n');
     }
 
     let jujutsuSection = 'Base de datos de Jujutsu Kaisen: No hay registros disponibles en este momento o el microservicio esta desconectado.';
     if (this.characters.length > 0) {
-      jujutsuSection = 'Base de datos de Jujutsu Kaisen (registros actuales del microservicio):\n' + this.characters.map(c => 
-        `- ${c.name}: Grado: ${c.grade || 'N/A'}, Tecnica: ${c.technique || 'N/A'}, Expansion: ${c.domain_expansion || 'N/A'}, Anime: ${c.anime || 'Jujutsu Kaisen'}`
-      ).join('\n');
+      jujutsuSection =
+        'Base de datos de Jujutsu Kaisen (registros actuales del microservicio):\n' +
+        this.characters
+          .map(
+            (c) =>
+              `- ${c.name}: Grado: ${c.grade || 'N/A'}, Tecnica: ${c.technique || 'N/A'}, Expansion: ${c.domain_expansion || 'N/A'}, Anime: ${c.anime || 'Jujutsu Kaisen'}`
+          )
+          .join('\n');
     }
 
     let profesoresSection = 'Base de datos de Profesores: No hay registros disponibles en este momento o el microservicio esta desconectado.';
     if (this.profesores.length > 0) {
-      profesoresSection = 'Base de datos de Profesores (registros actuales del microservicio):\n' + this.profesores.map(p => 
-        `- ${p.nombre}: Departamento: ${p.departamento || 'N/A'}, Profesion: ${p.profesion || 'N/A'}, Email: ${p.email || 'N/A'}, Telefono: ${p.telefono || 'N/A'}`
-      ).join('\n');
+      profesoresSection =
+        'Base de datos de Profesores (registros actuales del microservicio):\n' +
+        this.profesores
+          .map(
+            (p) =>
+              `- ${p.nombre}: Departamento: ${p.departamento || 'N/A'}, Profesion: ${p.profesion || 'N/A'}, Email: ${p.email || 'N/A'}, Telefono: ${p.telefono || 'N/A'}`
+          )
+          .join('\n');
     }
 
     return `
@@ -483,7 +529,7 @@ ${jujutsuSection}
 ${profesoresSection}
 
 REGLAS ESTRICTAS DE CONOCIMIENTO Y COMPORTAMIENTO:
-1. Solo tienes permitido responder consultas cuya respuesta este explícitamente contenida en la informacion de los microservicios mostrada arriba.
+1. Solo tienes permitido responder consultas cuya respuesta este explicitamente contenida en la informacion de los microservicios mostrada arriba.
 2. Si el usuario pregunta cualquier cosa fuera de estas bases de datos (otros temas, celebridades, recetas, politica, deportes, peliculas, matematicas externas, animes diferentes o datos ajenos):
    - TIENES ESTRICTAMENTE PROHIBIDO responder la consulta externa o inventar informacion.
    - DEBES rechazar la pregunta informando con amabilidad que tu conocimiento esta limitado estrictamente a la base de datos de los microservicios de Pokemon, Jujutsu Kaisen y Profesores.

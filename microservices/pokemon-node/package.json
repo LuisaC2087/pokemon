@@ -1,6 +1,7 @@
 {
   "name": "pokemon-node",
   "version": "1.0.0",
+  "engines": { "node": ">=20.0.0" },
   "description": "Pokemon microservice",
   "main": "index.js",
   "scripts": {

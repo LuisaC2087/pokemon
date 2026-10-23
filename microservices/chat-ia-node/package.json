@@ -1,6 +1,7 @@
 {
   "name": "chat-ia-node",
   "version": "1.0.0",
+  "engines": { "node": ">=20.0.0" },
   "description": "Microservicio de Chat con Inteligencia Artificial conectado a las bases de datos de Pokémon, Jujutsu Kaisen y Profesores",
   "main": "index.js",
   "scripts": {

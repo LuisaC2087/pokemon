@@ -1,6 +1,7 @@
 {
   "name": "profesores-node",
   "version": "2.0.0",
+  "engines": { "node": ">=20.0.0" },
   "description": "Microservicio de Docentes/Profesores conectado a Supabase",
   "main": "index.js",
   "scripts": {

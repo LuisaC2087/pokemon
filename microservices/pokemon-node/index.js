@@ -33,7 +33,7 @@ const swaggerOptions = {
       { name: 'Estado', description: 'Verificación del estado del servicio' },
     ],
   },
-  apis: ['index.js'],
+  apis: ['./index.js'],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);

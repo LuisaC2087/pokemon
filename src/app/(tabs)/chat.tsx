@@ -66,6 +66,14 @@ export const TIMEOUT_OPTIONS: TimeoutOption[] = [20, 40, 80, 160];
 
 function getChatEndpoints(): string[] {
   const endpoints: string[] = [];
+
+  // En producción (web export en Render) usa la variable de entorno inyectada por render.yaml
+  const publicUrl = process.env.EXPO_PUBLIC_CHAT_IA_URL;
+  if (publicUrl) {
+    endpoints.push(publicUrl.replace(/\/$/, ''));
+  }
+
+  // En desarrollo, detectar IP del host Expo para conectar desde el dispositivo físico
   try {
     const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoGo?.debuggerHost;
     if (hostUri) {
@@ -76,7 +84,7 @@ function getChatEndpoints(): string[] {
     }
   } catch {}
 
-  // IP local de la maquina en la red Wi-Fi
+  // IP local de la maquina en la red Wi-Fi (desarrollo)
   endpoints.push('http://172.24.105.23:3003');
 
   if (Platform.OS === 'android') {
@@ -87,6 +95,7 @@ function getChatEndpoints(): string[] {
 
   return endpoints.filter((val, idx, arr) => arr.indexOf(val) === idx);
 }
+
 
 let activeChatBase = getChatEndpoints()[0];
 

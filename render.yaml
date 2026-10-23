@@ -6,10 +6,13 @@ services:
     rootDir: microservices/pokemon-node
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         sync: false
-  
+      - key: NODE_ENV
+        value: production
+
   - type: web
     name: anime-python
     env: python
@@ -17,6 +20,7 @@ services:
     rootDir: microservices/anime-python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: MONGO_URL
         sync: false
@@ -28,11 +32,14 @@ services:
     rootDir: microservices/profesores-node
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
+      - key: NODE_ENV
+        value: production
 
   - type: web
     name: chat-ia-node
@@ -41,6 +48,7 @@ services:
     rootDir: microservices/chat-ia-node
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: GEMINI_API_KEY
         sync: false
@@ -60,12 +68,24 @@ services:
         value: https://anime-python-ueas.onrender.com
       - key: PROFESORES_SERVICE_URL
         value: https://profesores-node-ueas.onrender.com
+      - key: NODE_ENV
+        value: production
 
   - type: web
     name: pokemon-frontend
     runtime: static
+    rootDir: .
     buildCommand: npm install && npx expo export -p web
     staticPublishPath: dist
+    envVars:
+      - key: EXPO_PUBLIC_CHAT_IA_URL
+        value: https://chat-ia-node-ueas.onrender.com
+      - key: EXPO_PUBLIC_POKEMON_URL
+        value: https://pokemon-node-ueas.onrender.com
+      - key: EXPO_PUBLIC_ANIME_URL
+        value: https://anime-python-ueas.onrender.com
+      - key: EXPO_PUBLIC_PROFESORES_URL
+        value: https://profesores-node-ueas.onrender.com
     routes:
       - type: rewrite
         source: /*
