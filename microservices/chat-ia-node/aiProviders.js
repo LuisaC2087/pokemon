@@ -9,7 +9,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
@@ -88,7 +88,7 @@ function getProvidersStatus() {
     },
     {
       id: 'groq',
-      name: 'Groq - Llama 3.3 (Gratis)',
+      name: 'Groq - Qwen 3.8 27B (Gratis)',
       available: Boolean(groqClient),
       model: GROQ_MODEL,
       envKey: 'GROQ_API_KEY',
