@@ -304,14 +304,8 @@ class KnowledgeBase {
   }
 
   /**
-   * Valida si la pregunta del usuario hace referencia a alguno de los personajes
-   * de los 3 microservicios (Pokemon, Jujutsu Kaisen o Profesores).
-   *
-   * FIX: Usa un unico Promise.all para cargar datos y luego filtra en memoria
-   * sin hacer fetch adicionales (eliminado double-fetching).
-   *
-   * Retorna { valid: true, toolName, dbData, category } o
-   *         { valid: false, reply, reason }
+   * Verifica si el mensaje es un saludo inicial
+   */
   _isGreeting(norm) {
     if (!norm) return false;
     const clean = norm
