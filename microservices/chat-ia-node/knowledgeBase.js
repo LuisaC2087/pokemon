@@ -4,11 +4,6 @@
  * 2. Jujutsu Kaisen (MongoDB Atlas / anime-python)
  * 3. Profesores (Supabase PostgreSQL / profesores-node)
  *
- * FIX ARQUITECTURA:
- * - Se elimina el double-fetching: validarReferenciaPersonajes usa los datos
- *   ya cargados por Promise.all en lugar de volver a hacer fetch internamente.
- * - Se agrega cache TTL por microservicio (60s para datos estaticos,
- *   30s para profesores que son mas dinamicos).
  */
 
 const POKEMON_BASE_URL = process.env.POKEMON_SERVICE_URL || 'https://pokemon-node-ueas.onrender.com';

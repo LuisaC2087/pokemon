@@ -232,35 +232,18 @@ INSTRUCCION:
           timeoutMs,
         });
       } catch (genErr) {
-        console.warn(`[Chat-IA] Proveedor ${selectedProvider} fallo al generar texto (${genErr.message}). Preparando respuesta de respaldo.`);
-        let textResponse = '';
-        if (toolName === 'buscar_profesores') {
-          textResponse =
-            `Profesores encontrados en la base de datos:\n` +
-            dbData.results
-              .map(
-                (p) =>
-                  `- ${p.nombre}: Departamento de ${p.departamento || 'N/A'}, ${p.profesion || ''} (Email: ${p.email || 'N/A'})`
-              )
-              .join('\n');
-        } else if (toolName === 'buscar_pokemons') {
-          textResponse =
-            `Pokemon encontrados en la base de datos:\n` +
-            dbData.results
-              .map((p) => `- ${p.name} (Tipo: ${p.type}, HP: ${p.hp || 'N/A'}, Habilidad: ${p.ability || 'N/A'})`)
-              .join('\n');
-        } else {
-          textResponse =
-            `Personajes encontrados en la base de datos:\n` +
-            dbData.results
-              .map((c) => `- ${c.name} (Grado: ${c.grade || 'N/A'}, Tecnica: ${c.technique || 'N/A'})`)
-              .join('\n');
-        }
-        aiResult = {
-          reply: textResponse,
-          providerUsed: selectedProvider,
-          modelUsed: 'system_database_fallback',
-        };
+        console.error(`[Chat-IA] El proveedor ${selectedProvider} no respondio o fallo al generar texto:`, genErr.message);
+        return res.json({
+          reply: 'Lo sentimos, algo salio mal al procesar tu respuesta con la Inteligencia Artificial. Por favor intenta nuevamente en unos momentos o selecciona otro proveedor.',
+          suggestions: knowledgeBase.getSuggestedQuestions().slice(0, 3),
+          outOfScope: false,
+          aiConsumed: false,
+          error: genErr.message,
+          provider: selectedProvider,
+          model: 'error',
+          toolExecuted: toolName,
+          timeoutSeconds: parsedTimeout,
+        });
       }
 
       const textResponse = aiResult.reply;
