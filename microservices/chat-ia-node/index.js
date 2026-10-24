@@ -50,6 +50,7 @@ app.get('/health', (req, res) => {
     service: 'chat-ia-node',
     providers,
     hasGeminiKey: aiProviders.isProviderConfigured('gemini'),
+    hasGroqKey: aiProviders.isProviderConfigured('groq'),
     hasOpenAIKey: aiProviders.isProviderConfigured('openai'),
     hasDeepSeekKey: aiProviders.isProviderConfigured('deepseek'),
     counts: {
@@ -142,7 +143,7 @@ app.post('/sync', async (req, res) => {
  *                 example: Cual es la tecnica de Gojo?
  *               provider:
  *                 type: string
- *                 enum: [gemini, openai, deepseek]
+ *                 enum: [gemini, groq, openai, deepseek]
  *                 example: gemini
  *               timeoutSeconds:
  *                 type: integer

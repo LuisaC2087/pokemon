@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 
-export type AIProvider = 'gemini' | 'openai' | 'deepseek';
+export type AIProvider = 'gemini' | 'groq' | 'deepseek';
 export type TimeoutOption = 20 | 40 | 80 | 160;
 
 export interface ProviderConfig {
@@ -38,17 +38,17 @@ export const AI_PROVIDERS: ProviderConfig[] = [
     color: '#64ffda',
     bgColor: 'rgba(100, 255, 218, 0.12)',
     borderColor: 'rgba(100, 255, 218, 0.35)',
-    description: 'Flash Latest',
+    description: 'Gratis • Flash',
   },
   {
-    id: 'openai',
-    name: 'OpenAI',
-    shortName: 'OpenAI',
+    id: 'groq',
+    name: 'Groq (Llama 3.3)',
+    shortName: 'Groq',
     icon: 'hardware-chip-outline',
-    color: '#10b981',
-    bgColor: 'rgba(16, 185, 129, 0.12)',
-    borderColor: 'rgba(16, 185, 129, 0.35)',
-    description: 'GPT-4o Mini',
+    color: '#f97316',
+    bgColor: 'rgba(249, 115, 22, 0.12)',
+    borderColor: 'rgba(249, 115, 22, 0.35)',
+    description: 'Gratis • Llama 3',
   },
   {
     id: 'deepseek',

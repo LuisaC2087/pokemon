@@ -8,6 +8,10 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_BASE_URL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
+
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
@@ -19,6 +23,19 @@ if (GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10) {
     console.log(`[AI-Providers] Google Gemini inicializado (modelo base: ${GEMINI_MODEL})`);
   } catch (err) {
     console.error('[AI-Providers] Error al inicializar Gemini:', err.message);
+  }
+}
+
+let groqClient = null;
+if (GROQ_API_KEY && GROQ_API_KEY.trim().length > 5) {
+  try {
+    groqClient = new OpenAI({
+      baseURL: GROQ_BASE_URL,
+      apiKey: GROQ_API_KEY.trim(),
+    });
+    console.log(`[AI-Providers] Groq (Gratis) inicializado (modelo base: ${GROQ_MODEL})`);
+  } catch (err) {
+    console.error('[AI-Providers] Error al inicializar Groq:', err.message);
   }
 }
 
@@ -53,7 +70,8 @@ function stripEmojis(text) {
 function normalizeProvider(name) {
   if (!name || typeof name !== 'string') return 'gemini';
   const clean = name.toLowerCase().trim();
-  if (clean.includes('open') || clean.includes('gpt')) return 'openai';
+  if (clean.includes('groq') || clean.includes('llama')) return 'groq';
+  if (clean.includes('open') || clean.includes('gpt')) return groqClient ? 'groq' : 'openai';
   if (clean.includes('deep')) return 'deepseek';
   if (clean.includes('gemini') || clean.includes('google')) return 'gemini';
   return clean;
@@ -63,10 +81,17 @@ function getProvidersStatus() {
   return [
     {
       id: 'gemini',
-      name: 'Google Gemini',
+      name: 'Google Gemini (Gratis)',
       available: Boolean(genAI),
       model: GEMINI_MODEL,
       envKey: 'GEMINI_API_KEY',
+    },
+    {
+      id: 'groq',
+      name: 'Groq - Llama 3.3 (Gratis)',
+      available: Boolean(groqClient),
+      model: GROQ_MODEL,
+      envKey: 'GROQ_API_KEY',
     },
     {
       id: 'openai',
@@ -88,7 +113,8 @@ function getProvidersStatus() {
 function isProviderConfigured(providerId) {
   const norm = normalizeProvider(providerId);
   if (norm === 'gemini') return Boolean(genAI);
-  if (norm === 'openai') return Boolean(openaiClient);
+  if (norm === 'groq') return Boolean(groqClient);
+  if (norm === 'openai') return Boolean(openaiClient || groqClient);
   if (norm === 'deepseek') return Boolean(deepseekClient);
   return false;
 }
@@ -123,10 +149,28 @@ Responde UNICAMENTE un objeto JSON valido con esta estructura exacta:
 Mensaje del usuario: "${trimmedMessage}"`;
 
   try {
-    if (norm === 'openai' && openaiClient) {
-      const response = await openaiClient.chat.completions.create(
+    if (norm === 'groq' && groqClient) {
+      const response = await groqClient.chat.completions.create(
         {
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: 'Eres un orquestador que responde estrictamente en JSON.' },
+            { role: 'user', content: decisionPrompt },
+          ],
+          temperature: 0.1,
+          response_format: { type: 'json_object' },
+        },
+        { timeout: timeoutMs }
+      );
+      const text = response.choices?.[0]?.message?.content || '{}';
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.tool) return parsed;
+    } else if (norm === 'openai' && (openaiClient || groqClient)) {
+      const client = openaiClient || groqClient;
+      const model = openaiClient ? OPENAI_MODEL : GROQ_MODEL;
+      const response = await client.chat.completions.create(
+        {
+          model: model,
           messages: [
             { role: 'system', content: 'Eres un orquestador que responde estrictamente en JSON.' },
             { role: 'user', content: decisionPrompt },
@@ -251,6 +295,30 @@ async function generateAssistantResponse({
     content: userMessage,
   });
 
+  // GROQ (100% GRATIS)
+  if (norm === 'groq' || (norm === 'openai' && !openaiClient && groqClient)) {
+    if (!groqClient) {
+      throw new Error(
+        'El proveedor Groq no esta configurado en el servidor. Por favor agregue GROQ_API_KEY en el archivo .env de microservices/chat-ia-node (es 100% gratuita en https://console.groq.com).'
+      );
+    }
+    const response = await groqClient.chat.completions.create(
+      {
+        model: GROQ_MODEL,
+        messages: standardMessages,
+        temperature: 0.2,
+        max_tokens: 800,
+      },
+      { timeout: timeoutMs }
+    );
+    const reply = response.choices?.[0]?.message?.content || '';
+    return {
+      reply: stripEmojis(reply),
+      providerUsed: 'groq',
+      modelUsed: GROQ_MODEL,
+    };
+  }
+
   // OPENAI
   if (norm === 'openai') {
     if (!openaiClient) {
@@ -366,6 +434,7 @@ module.exports = {
   planToolWithProvider,
   generateAssistantResponse,
   GEMINI_MODEL,
+  GROQ_MODEL,
   OPENAI_MODEL,
   DEEPSEEK_MODEL,
 };
