@@ -312,8 +312,35 @@ class KnowledgeBase {
    *
    * Retorna { valid: true, toolName, dbData, category } o
    *         { valid: false, reply, reason }
+  _isGreeting(norm) {
+    if (!norm) return false;
+    const clean = norm
+      .replace(/[¿?¡!.,;:()_/\-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const greetingPhrases = [
+      'hola', 'buenas', 'buen dia', 'buenos dias', 'buenas tardes', 'buenas noches',
+      'que tal', 'saludos', 'hey', 'hello', 'hi', 'que hay', 'como estas', 'como te va',
+      'quien eres', 'que haces', 'que eres', 'que puedes hacer', 'ayuda', 'inicio', 'empezar'
+    ];
+
+    if (greetingPhrases.includes(clean)) return true;
+
+    const words = clean.split(' ');
+    if (words.length <= 4 && ['hola', 'buenas', 'hey', 'saludos', 'hello', 'hi'].includes(words[0])) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Valida si la pregunta del usuario hace referencia a alguno de los personajes
+   * de los 3 microservicios (Pokemon, Jujutsu Kaisen o Profesores) o es un saludo inicial.
+   *
+   * Soporta saludos iniciales y preguntas de seguimiento usando el historial.
    */
-  async validarReferenciaPersonajes(message) {
+  async validarReferenciaPersonajes(message, history = []) {
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return {
         valid: false,
@@ -328,6 +355,29 @@ class KnowledgeBase {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
 
+    // 0. Detección de saludos iniciales (sin mencionar personajes específicos)
+    if (this._isGreeting(norm)) {
+      return {
+        valid: true,
+        toolName: 'saludo',
+        category: 'saludo',
+        isGreeting: true,
+        dbData: { results: [] },
+      };
+    }
+
+    // Contexto del historial para preguntas de seguimiento (ej: "¿y sus tecnicas?", "¿quien ganaria?")
+    let historyContext = '';
+    if (Array.isArray(history) && history.length > 0) {
+      historyContext = history
+        .slice(-4)
+        .map((h) => h.content || '')
+        .join(' ')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    }
+
     // Un unico Promise.all respeta el cache TTL: si los datos son frescos,
     // retorna inmediatamente sin hacer requests HTTP adicionales.
     const [pokes, jujutsus, profs] = await Promise.all([
@@ -341,7 +391,7 @@ class KnowledgeBase {
       'pokemon', 'pokemons', 'pokedex', 'pikachu', 'charizard', 'bulbasaur', 'squirtle',
       'tipo electrico', 'tipo fuego', 'tipo agua', 'tipo planta', 'tipo veneno',
     ];
-    const refersToPokemonKeyword = pokeKeywords.some((kw) => norm.includes(kw));
+    let refersToPokemonKeyword = pokeKeywords.some((kw) => norm.includes(kw));
 
     let matchedPokemon = null;
     if (Array.isArray(pokes)) {
@@ -349,10 +399,24 @@ class KnowledgeBase {
         const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         return pNorm.length >= 3 && norm.includes(pNorm);
       });
+      // Seguimiento desde el historial
+      if (!matchedPokemon && historyContext) {
+        matchedPokemon = pokes.find((p) => {
+          const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return pNorm.length >= 3 && historyContext.includes(pNorm);
+        });
+        if (matchedPokemon) {
+          const followUpWords = ['su', 'sus', 'el', 'ella', 'ataque', 'habilidad', 'tipo', 'hp', 'combate', 'pelea', 'evolucion', 'historia', 'mas'];
+          if (followUpWords.some((w) => norm.includes(w))) {
+            refersToPokemonKeyword = true;
+          } else {
+            matchedPokemon = null;
+          }
+        }
+      }
     }
 
     if (refersToPokemonKeyword || matchedPokemon) {
-      // Usar _filtrarPokemons para evitar re-fetch
       const dbData = this._filtrarPokemons(pokes, {
         nombre: matchedPokemon ? matchedPokemon.name : undefined,
         termino: raw,
@@ -360,7 +424,7 @@ class KnowledgeBase {
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return { valid: true, toolName: 'buscar_pokemons', dbData, category: 'pokemon' };
+        return { valid: true, toolName: 'buscar_pokemons', dbData, category: 'pokemon', matchedEntity: matchedPokemon };
       }
       return {
         valid: false,
@@ -375,7 +439,7 @@ class KnowledgeBase {
       'tecnica maldita', 'expansion de dominio', 'anime', 'gojo', 'itadori', 'sukuna',
       'megumi', 'nobara', 'nanami', 'satoru', 'yuji',
     ];
-    const refersToAnimeKeyword = animeKeywords.some((kw) => norm.includes(kw));
+    let refersToAnimeKeyword = animeKeywords.some((kw) => norm.includes(kw));
 
     let matchedJujutsu = null;
     if (Array.isArray(jujutsus)) {
@@ -384,6 +448,22 @@ class KnowledgeBase {
         const parts = cNorm.split(' ');
         return parts.some((part) => part.length >= 3 && norm.includes(part));
       });
+      // Seguimiento desde el historial
+      if (!matchedJujutsu && historyContext) {
+        matchedJujutsu = jujutsus.find((c) => {
+          const cNorm = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const parts = cNorm.split(' ');
+          return parts.some((part) => part.length >= 3 && historyContext.includes(part));
+        });
+        if (matchedJujutsu) {
+          const followUpWords = ['su', 'sus', 'el', 'ella', 'tecnica', 'grado', 'expansion', 'dominio', 'pelea', 'combate', 'ganaria', 'mas', 'historia'];
+          if (followUpWords.some((w) => norm.includes(w))) {
+            refersToAnimeKeyword = true;
+          } else {
+            matchedJujutsu = null;
+          }
+        }
+      }
     }
 
     if (refersToAnimeKeyword || matchedJujutsu) {
@@ -394,7 +474,7 @@ class KnowledgeBase {
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return { valid: true, toolName: 'buscar_personajes_jujutsu', dbData, category: 'jujutsu' };
+        return { valid: true, toolName: 'buscar_personajes_jujutsu', dbData, category: 'jujutsu', matchedEntity: matchedJujutsu };
       }
       return {
         valid: false,
@@ -408,7 +488,7 @@ class KnowledgeBase {
       'profesor', 'profesora', 'profesores', 'docente', 'docentes',
       'departamento', 'catedra', 'materia', 'facultad', 'asignatura',
     ];
-    const refersToProfKeyword = profKeywords.some((kw) => norm.includes(kw));
+    let refersToProfKeyword = profKeywords.some((kw) => norm.includes(kw));
 
     let matchedProf = null;
     if (Array.isArray(profs)) {
@@ -417,6 +497,22 @@ class KnowledgeBase {
         const parts = pNorm.split(' ');
         return parts.some((part) => part.length >= 3 && norm.includes(part));
       });
+      // Seguimiento desde el historial
+      if (!matchedProf && historyContext) {
+        matchedProf = profs.find((p) => {
+          const pNorm = (p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const parts = pNorm.split(' ');
+          return parts.some((part) => part.length >= 3 && historyContext.includes(part));
+        });
+        if (matchedProf) {
+          const followUpWords = ['su', 'sus', 'el', 'ella', 'materia', 'materias', 'departamento', 'email', 'correo', 'profesion', 'mas'];
+          if (followUpWords.some((w) => norm.includes(w))) {
+            refersToProfKeyword = true;
+          } else {
+            matchedProf = null;
+          }
+        }
+      }
     }
 
     if (refersToProfKeyword || matchedProf) {
@@ -433,7 +529,7 @@ class KnowledgeBase {
       });
 
       if (dbData && dbData.found && dbData.results.length > 0) {
-        return { valid: true, toolName: 'buscar_profesores', dbData, category: 'profesores' };
+        return { valid: true, toolName: 'buscar_profesores', dbData, category: 'profesores', matchedEntity: matchedProf };
       }
       return {
         valid: false,
@@ -442,10 +538,21 @@ class KnowledgeBase {
       };
     }
 
-    // 4. Fuera de scope
+    // 4. Saludo de respaldo si contiene expresiones coloquiales de bienvenida
+    if (norm.includes('hola') || norm.includes('buenos dias') || norm.includes('buenas tardes') || norm.includes('saludos')) {
+      return {
+        valid: true,
+        toolName: 'saludo',
+        category: 'saludo',
+        isGreeting: true,
+        dbData: { results: [] },
+      };
+    }
+
+    // 5. Fuera de scope
     return {
       valid: false,
-      reply: 'No es posible responder a tu consulta. Solo puedo responder preguntas que hagan referencia a los personajes y registros de los microservicios de Pokemon, Anime (Jujutsu Kaisen) o Profesores.',
+      reply: 'No es posible responder a tu consulta. Solo puedo responder preguntas sobre los personajes y registros de los microservicios de Pokemon, Anime (Jujutsu Kaisen) o Profesores.',
       reason: 'out_of_scope',
     };
   }

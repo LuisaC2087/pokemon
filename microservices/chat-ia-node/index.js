@@ -188,8 +188,8 @@ app.post('/chat', async (req, res) => {
 
     try {
       // 1. VALIDACIÓN REQUERIDA POR EL NEGOCIO:
-      // Validar si la pregunta hace referencia a uno de los personajes en los microservicios de pokemon, anime y profesores.
-      const validation = await knowledgeBase.validarReferenciaPersonajes(trimmedMessage);
+      // Validar si la pregunta es un saludo inicial o hace referencia a personajes en los microservicios.
+      const validation = await knowledgeBase.validarReferenciaPersonajes(trimmedMessage, history);
 
       // SI NO: Responder directamente al chat que NO es posible SIN consumir el microservicio de la IA
       if (!validation.valid) {
@@ -204,22 +204,41 @@ app.post('/chat', async (req, res) => {
         });
       }
 
-      // SI SÍ: Consumir el microservicio de la IA seleccionada (Gemini, OpenAI, DeepSeek)
+      // SI SÍ: Consumir el microservicio de la IA seleccionada (Gemini, Groq, DeepSeek)
+      let instruction = '';
       const toolName = validation.toolName;
-      const dbData = validation.dbData;
-      console.log(`[Chat-IA] Pregunta valida para ${toolName} (${dbData.results.length} registros). Consumiendo IA (${selectedProvider})...`);
+      const dbData = validation.dbData || { results: [] };
 
-      const instruction = `
-Se consulto la base de datos oficial del microservicio en tiempo real para la herramienta "${toolName}".
-REGISTROS OFICIALES ENCONTRADOS (${dbData.results.length} registros verificados en la base de datos):
-${JSON.stringify(dbData.results, null, 2)}
-
+      if (validation.isGreeting) {
+        console.log(`[Chat-IA] Saludo inicial detectado. Consumiendo IA (${selectedProvider}) para bienvenida cordial...`);
+        instruction = `
+El usuario te esta enviando un saludo inicial o preguntando que puedes hacer.
 INSTRUCCION:
-- Formula una respuesta completa, util y profesional basada en estos registros encontrados en la base de datos.
-- Puedes mejorar y enriquecer la respuesta explicando con claridad los detalles de los elementos encontrados.
-- Manten la fidelidad a los datos provistos por el microservicio.
+- Responde con un saludo muy cordial, calido, amable y profesional.
+- Presentate como el Asistente Inteligente oficial conectado a los 3 microservicios del sistema:
+  1. Pokemon (datos de tipos, estadisticas, HP y habilidades).
+  2. Jujutsu Kaisen (hechiceros, grados, tecnicas malditas y expansiones de dominio).
+  3. Profesores (cuerpo docente, departamentos academicos y materias).
+- Explica claramente que cuando te pregunten sobre cualquier personaje o profesor registrado en la base de datos, responderas sus datos oficiales y ademas puedes responder cualquier duda sobre el y complementar ampliamente la informacion.
+- Invita amablemente al usuario a realizar su primera pregunta.
 - NO uses ningun emoji en tu respuesta.
 `.trim();
+      } else {
+        console.log(`[Chat-IA] Personaje o registro valido encontrado en BD para ${toolName} (${dbData.results.length} registros). Consumiendo IA (${selectedProvider})...`);
+        instruction = `
+El personaje o registro consultado SI esta confirmado y registrado en la base de datos oficial del microservicio ("${toolName}").
+
+REGISTROS OFICIALES ENCONTRADOS EN LA BASE DE DATOS (${dbData.results.length} registros):
+${JSON.stringify(dbData.results, null, 2)}
+
+DIRECTIVAS PARA FORMULAR TU RESPUESTA:
+1. BASE OFICIAL: Utiliza los datos del microservicio (como nombre, tipo, HP, habilidades, grado, tecnica, departamento, etc.) como fundamento verídico y principal de tu respuesta.
+2. COMPLEMENTAR INFORMACION Y RESPONDER CUALQUIER PREGUNTA: Como el personaje SI esta en la base de datos oficial, tienes autorizacion total para responder preguntas sobre el (estrategias, combates, curiosidades, explicacion a fondo de sus tecnicas o rol academico) y complementar la respuesta ampliamente con tu conocimiento general de su universo (anime, videojuegos o academia).
+3. VALOR Y PROFUNDIDAD: No te limites unicamente a enumerar los campos; responde especificamente a la inquietud del usuario, expandiendo con explicaciones claras, interesantes y utiles.
+4. COHERENCIA: Manten siempre coherencia con los atributos oficiales registrados en la base de datos.
+5. NO uses ningun emoji en tu respuesta.
+`.trim();
+      }
 
       // Generar respuesta usando el proveedor elegido (Gemini, OpenAI, DeepSeek)
       let aiResult;
